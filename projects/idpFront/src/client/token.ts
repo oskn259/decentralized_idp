@@ -3,7 +3,7 @@ import { DPoPKeyPair, createDPoPProof } from "@decentralized-idp/sdk/dpop";
 /**
  * `POST /token` as the relying party does it: the credential in a form body and a fresh
  * DPoP proof for this one call in the header. Only the holder of the DPoP key calls it:
- * this server, and `../idpFront/cli.ts` when it plays the relying party.
+ * `../../cli.ts` when it plays the relying party, and the gateway's tests.
  */
 
 export interface TokenResponse {

@@ -35,7 +35,7 @@ fi
 echo "== gateway"
 health=$(curl -sf "$GW/health") || fail "gateway /health"
 [ "$(echo "$health" | json .status)" = "ok" ] && pass "health ok" || fail "health: $health"
-meta=$(curl -sf "$GW/.well-known/openid-configuration")
+meta=$(curl -sf "$GW/.well-known/oauth-authorization-server")
 [ "$(echo "$meta" | json '.response_types_supported[0]')" = "code" ] && pass "discovery: response_types_supported=code" || fail "discovery"
 [ "$(echo "$meta" | json .token_endpoint)" = "$GW/token" ] && pass "discovery: token_endpoint" || fail "discovery token_endpoint"
 [ "$(echo "$meta" | json '.dpop_signing_alg_values_supported[0]')" = "EdDSA" ] && pass "discovery: DPoP EdDSA" || fail "discovery dpop"

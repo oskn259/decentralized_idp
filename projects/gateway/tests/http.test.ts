@@ -95,10 +95,10 @@ describe("GET /health", () => {
   });
 });
 
-describe("GET /.well-known/openid-configuration", () => {
+describe("GET /.well-known/oauth-authorization-server", () => {
   it("advertises authorization_code + DPoP, no id_token", async () => {
     server = await startTestServer([new FakeNode(1), new FakeNode(2), new FakeNode(3)], dist);
-    const res = await fetch(`${server.url}/.well-known/openid-configuration`);
+    const res = await fetch(`${server.url}/.well-known/oauth-authorization-server`);
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({
@@ -109,9 +109,16 @@ describe("GET /.well-known/openid-configuration", () => {
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code", "refresh_token"],
       token_endpoint_auth_methods_supported: ["none"],
-      dpop_signing_alg_values_supported: ["EdDSA"],
-      scopes_supported: ["openid", "profile", "email"],
+      dpop_signing_alg_values_supported: ["EdDSA", "Ed25519"],
+      scopes_supported: ["profile", "email"],
+      code_challenge_methods_supported: [],
     });
+  });
+
+  it("no longer serves the old openid-configuration path", async () => {
+    server = await startTestServer([new FakeNode(1), new FakeNode(2), new FakeNode(3)], dist);
+    const res = await fetch(`${server.url}/.well-known/openid-configuration`);
+    expect(res.status).toBe(404);
   });
 });
 
@@ -164,46 +171,75 @@ describe("GET /authorize", () => {
     server = await startTestServer([new FakeNode(1), new FakeNode(2), new FakeNode(3)], dist);
   });
 
-  it("400s when client_id is missing", async () => {
+  it("302s back to redirect_uri with invalid_request when client_id is missing", async () => {
     const { client_id, ...rest } = VALID;
     const res = await authorize(rest);
-    expect(res.status).toBe(400);
-    expect((await res.json()).error_description).toBe("client_id: is required");
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.origin + location.pathname).toBe(VALID.redirect_uri);
+    expect(location.searchParams.get("error")).toBe("invalid_request");
+    expect(location.searchParams.get("error_description")).toBe("client_id: is required");
+    expect(res.headers.get("location")).toContain("error_description=client_id%3A+is+required");
   });
 
-  it("400s when redirect_uri is missing", async () => {
+  it("400s when redirect_uri is missing (no redirect target to send the error to)", async () => {
     const { redirect_uri, ...rest } = VALID;
     const res = await authorize(rest);
+    expect(res.status).toBe(400);
     expect((await res.json()).error_description).toBe("redirect_uri: is required");
   });
 
-  it("400s when response_type is not code", async () => {
+  it("302s back to redirect_uri when response_type is not code", async () => {
     const res = await authorize({ ...VALID, response_type: "token" });
-    expect((await res.json()).error_description).toBe("response_type: must be code");
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.origin + location.pathname).toBe(VALID.redirect_uri);
+    expect(location.searchParams.get("error")).toBe("invalid_request");
+    expect(location.searchParams.get("error_description")).toBe("response_type: must be code");
   });
 
-  it("400s when scope does not include openid", async () => {
-    const res = await authorize({ ...VALID, scope: "profile" });
-    expect((await res.json()).error_description).toBe("scope: must include openid");
+  it("302s back to redirect_uri carrying state when given", async () => {
+    const { client_id, ...rest } = VALID;
+    const res = await authorize({ ...rest, state: "xyz" });
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.searchParams.get("state")).toBe("xyz");
   });
 
-  it("400s the same way when scope is absent entirely", async () => {
+  it("302s the same way when scope is absent entirely", async () => {
     const { scope, ...rest } = VALID;
     const res = await authorize(rest);
-    expect((await res.json()).error_description).toBe("scope: is required");
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.searchParams.get("error_description")).toBe("scope: is required");
   });
 
-  it("400s when dpop_jkt is not a 43-character base64url thumbprint", async () => {
+  it("302s back to redirect_uri when dpop_jkt is not a 43-character base64url thumbprint", async () => {
     const res = await authorize({ ...VALID, dpop_jkt: "too-short" });
-    expect((await res.json()).error_description).toBe("dpop_jkt: must be a base64url SHA-256 JWK thumbprint (43 characters)");
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.searchParams.get("error_description")).toBe(
+      "dpop_jkt: must be a base64url SHA-256 JWK thumbprint (43 characters)"
+    );
   });
 
-  it("every 400 is invalid_request and logged as a rejection", async () => {
+  it("every refusal is invalid_request and logged as a rejection", async () => {
     const { client_id, ...rest } = VALID;
     const res = await authorize(rest);
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("invalid_request");
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.searchParams.get("error")).toBe("invalid_request");
     expect(server!.logLines.some((l) => l.includes("✖ authorize rejected: client_id: is required"))).toBe(true);
+  });
+
+  it("400s (no redirect) when redirect_uri is missing, even if other fields are also invalid", async () => {
+    const { client_id, redirect_uri, ...rest } = VALID;
+    const res = await authorize(rest);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("invalid_request");
+    expect(typeof body.error_description).toBe("string");
+    expect(server!.logLines.some((l) => l.includes("✖ authorize rejected:"))).toBe(true);
   });
 
   it("302s to /login carrying c, client_id, redirect_uri, scope, state and dpop_jkt", async () => {

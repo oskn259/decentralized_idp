@@ -3,7 +3,7 @@ import { Context } from "hono";
 import { Group, tokenEndpointUrl } from "../../domain/value/group.js";
 import { DemoLog } from "../demo-log.js";
 
-/** `GET /.well-known/openid-configuration`: OAuth 2.0 authorization code + DPoP, no id_token. */
+/** `GET /.well-known/oauth-authorization-server` (RFC 8414): OAuth 2.0 authorization code + DPoP. Not OpenID Connect: no id_token. */
 export function metadataEndpoint(group: Group, c: Context, demo: DemoLog): Response {
   demo.event("discovery", "public only");
   return c.json({
@@ -14,8 +14,9 @@ export function metadataEndpoint(group: Group, c: Context, demo: DemoLog): Respo
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
     token_endpoint_auth_methods_supported: ["none"],
-    dpop_signing_alg_values_supported: ["EdDSA"],
-    scopes_supported: ["openid", "profile", "email"],
+    dpop_signing_alg_values_supported: ["EdDSA", "Ed25519"],
+    scopes_supported: ["profile", "email"],
+    code_challenge_methods_supported: [],
   });
 }
 

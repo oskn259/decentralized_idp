@@ -48,11 +48,14 @@ export function decodeJwt(token: string): Jwt {
   return { header: parseJson(parts[0]), payload: parseJson(parts[1]) };
 }
 
-/** Checks `alg: EdDSA` and the Ed25519 signature, and returns the decoded parts. Throws otherwise. */
+/** JOSE names for a pure Ed25519 signature: the classic polymorphic one and the fully specified one. */
+const ED25519_ALGS = new Set(["EdDSA", "Ed25519"]);
+
+/** Checks that `alg` names Ed25519 and that the signature verifies; returns the decoded parts. Throws otherwise. */
 export function verifyJwt(token: string, publicKey: Uint8Array): Jwt {
   const { header, payload } = decodeJwt(token);
   const [headerB64, payloadB64, signatureB64] = token.split(".");
-  if (header.alg !== "EdDSA") {
+  if (typeof header.alg !== "string" || !ED25519_ALGS.has(header.alg)) {
     throw new Error(`Unsupported alg: ${String(header.alg)}`);
   }
   if (!verifySignature(base64UrlDecode(signatureB64), utf8(`${headerB64}.${payloadB64}`), publicKey)) {

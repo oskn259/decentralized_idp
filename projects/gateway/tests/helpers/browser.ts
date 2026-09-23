@@ -1,6 +1,6 @@
 import { DPoPKeyPair, calculateJwkThumbprint, exportDPoPJwk, generateDPoPKeyPair } from "@decentralized-idp/sdk/dpop";
 import { signOn as sdkSignOn } from "../../../idpFront/src/client/sign-on.js";
-import { TokenError, TokenResponse, requestToken } from "../../../rp/src/token.js";
+import { TokenError, TokenResponse, requestToken } from "../../../idpFront/src/client/token.js";
 
 /**
  * The browser against a running gateway, played by the real clients: the login page's

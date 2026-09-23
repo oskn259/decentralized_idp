@@ -55,7 +55,7 @@ npm run sign-on -- --gateway http://localhost:3000 --user alice --password <pw> 
 | `--user` | `alice` | ユーザー名 |
 | `--password` | なし（必須） | パスワード |
 | `--client-id` | `demo_client` | アサーションの`clientId`クレーム |
-| `--scope` | `openid profile` | アサーションの`scope`クレーム |
+| `--scope` | `profile` | アサーションの`scope`クレーム |
 | `--nonce` | ランダム生成 | アサーションの`nonce`クレーム |
 | `--jkt` | なし | RP が発行した DPoP サムプリント。指定すると、それに束縛したアサーション（認可コード）を出力して止まる。鍵は RP にあるので `/token` は呼ばない。`scripts/integration-test.sh` が RP 経由の流れで使う |
 | `--refresh` | `false` | 指定するとリフレッシュトークンでの再取得も行う |

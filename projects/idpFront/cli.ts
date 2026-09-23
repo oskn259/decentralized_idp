@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
 import { DPoPKeyPair, calculateJwkThumbprint, exportDPoPJwk, generateDPoPKeyPair } from "@decentralized-idp/sdk/dpop";
 import { signOn } from "./src/client/sign-on.js";
-import { TokenResponse, requestToken } from "../rp/src/token.js";
+import { TokenResponse, requestToken } from "./src/client/token.js";
 
 /**
  * The browser, played from a terminal: both the relying party's front end (which owns the
@@ -23,7 +23,7 @@ const { values } = parseArgs({
     user: { type: "string", default: "alice" },
     password: { type: "string" },
     "client-id": { type: "string", default: "demo_client" },
-    scope: { type: "string", default: "openid profile" },
+    scope: { type: "string", default: "profile" },
     // The challenge `/authorize` would hand a browser. The CLI skips `/authorize` and makes its own.
     nonce: { type: "string", default: `cli-${crypto.randomUUID().slice(0, 8)}` },
     refresh: { type: "boolean", default: false },

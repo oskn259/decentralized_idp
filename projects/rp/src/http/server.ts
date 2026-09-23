@@ -3,13 +3,17 @@ import { createAdaptorServer } from "@hono/node-server";
 import { Context, Hono } from "hono";
 import { html } from "hono/html";
 import type { HtmlEscapedString } from "hono/utils/html";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { DPoPKeyPair, calculateJwkThumbprint, exportDPoPJwk, generateDPoPKeyPair } from "@decentralized-idp/sdk/dpop";
-import { requestToken } from "../token.js";
-import { verifyAccessToken } from "../verify.js";
+import { JWTPayload, createRemoteJWKSet, jwtVerify } from "jose";
+import * as oauth from "openid-client";
+
+/**
+ * A relying party built from ordinary OAuth client libraries only: `openid-client` for the
+ * authorization code flow with DPoP (RFC 9449), `jose` to verify the access token against
+ * the gateway's JWKS. Nothing here knows about PASTA, FROST or the nodes.
+ */
 
 export interface RpOptions {
-  /** The gateway as the browser sees it: where `/login` redirects to, and the issuer named in the DPoP proof. */
+  /** The gateway as the browser sees it: the OAuth issuer. */
   gatewayUrl: string;
   /** This relying party's own public URL: the base of `redirect_uri`. */
   rpUrl: string;
@@ -17,12 +21,9 @@ export interface RpOptions {
   scope: string;
 }
 
-/**
- * One sign-in. Keyed by `state` until the callback spends it, then by a fresh id that the
- * signed-in page's refresh form carries. Every key is used once.
- */
+/** One sign-in. Keyed by `state` until the callback spends it, then by a fresh id the signed-in page's refresh form carries. */
 interface Session {
-  dpop: DPoPKeyPair;
+  dpop: oauth.DPoPHandle;
   jkt: string;
   refreshToken?: string;
 }
@@ -30,11 +31,19 @@ interface Session {
 /**
  * Routes:
  *   GET  /          a "Sign in" link
- *   GET  /login     new state + DPoP key, 302 to the gateway's /authorize
- *   GET  /callback  ?code=<assertion>&state: exchange the code for tokens, show the claims
+ *   GET  /login     new state + DPoP key, 302 to the gateway's authorization endpoint
+ *   GET  /callback  ?code&state: exchange the code for tokens, show the claims
  *   POST /refresh   session=<id>: exchange the stored refresh token, show the claims
  */
-export function createRpApp(options: RpOptions): Hono {
+export async function createRpApp(options: RpOptions): Promise<Hono> {
+  // RFC 8414 metadata. `allowInsecureRequests` only matters for the plain-http demo issuer.
+  const config = await oauth.discovery(new URL(options.gatewayUrl), options.clientId, undefined, oauth.None(), {
+    algorithm: "oauth2",
+    execute: options.gatewayUrl.startsWith("http:") ? [oauth.allowInsecureRequests] : [],
+  });
+  const jwks = createRemoteJWKSet(new URL(config.serverMetadata().jwks_uri!));
+  const redirectUri = `${options.rpUrl}/callback`;
+
   const app = new Hono();
   const sessions = new Map<string, Session>();
 
@@ -46,39 +55,58 @@ export function createRpApp(options: RpOptions): Hono {
     return session;
   }
 
-  /** `POST /token`, then the claims page (or the gateway's OAuth error with its status). */
-  async function exchange(session: Session, grant: "authorization_code" | "refresh_token", credential: string, c: Context): Promise<Response> {
-    const res = await requestToken({ gatewayUrl: options.gatewayUrl, issuer: options.gatewayUrl, dpop: session.dpop, grant, credential });
-    if (!("access_token" in res.body)) {
-      return c.html(page(html`<p>${res.body.error}: ${res.body.error_description}</p>`), res.status as ContentfulStatusCode);
+  /** Verifies the access token as any resource server would, plus the DPoP binding to this session's key. */
+  async function verify(accessToken: string, session: Session): Promise<JWTPayload> {
+    const { payload } = await jwtVerify(accessToken, jwks, { issuer: options.gatewayUrl, audience: options.clientId, typ: "at+jwt" });
+    if ((payload.cnf as { jkt?: string } | undefined)?.jkt !== session.jkt) {
+      throw new Error("cnf.jkt does not match this session's DPoP key");
     }
-    const claims = await verifyAccessToken(options.gatewayUrl, res.body.access_token, { aud: options.clientId, jkt: session.jkt });
-    const id = crypto.randomUUID();
-    sessions.set(id, { ...session, refreshToken: res.body.refresh_token });
+    return payload;
+  }
+
+  /** Shows the claims of a fresh token set and remembers the refresh token under a new id. */
+  async function signedIn(tokens: oauth.TokenEndpointResponse, session: Session, c: Context): Promise<Response> {
+    const claims = await verify(tokens.access_token, session);
+    const id = oauth.randomState();
+    sessions.set(id, { ...session, refreshToken: tokens.refresh_token });
     return c.html(claimsPage(claims, id));
   }
 
   app.onError((err, c) => {
+    // The gateway's OAuth refusal, when that is what happened; otherwise a plain failure.
+    if (err instanceof oauth.ResponseBodyError) {
+      return c.html(page(html`<p>${err.error}: ${err.error_description ?? ""}</p>`), 400);
+    }
+    if (err instanceof oauth.AuthorizationResponseError) {
+      return c.html(page(html`<p>${err.error}: ${err.error_description ?? ""}</p>`), 400);
+    }
     console.error("[rp] unhandled request error:", err);
     return c.text("Internal server error", 500);
   });
 
   app.get("/", (c) => c.html(page(html`<p><a href="/login">Sign in</a></p>`)));
 
-  app.get("/login", (c) => {
-    const dpop = generateDPoPKeyPair();
-    const jkt = calculateJwkThumbprint(exportDPoPJwk(dpop.publicKey));
-    const state = crypto.randomUUID();
+  app.get("/login", async (c) => {
+    const dpop = oauth.getDPoPHandle(config, await oauth.randomDPoPKeyPair("EdDSA"));
+    const jkt = await dpop.calculateThumbprint();
+    const state = oauth.randomState();
     sessions.set(state, { dpop, jkt });
-    return c.redirect(authorizeUrl(options, state, jkt), 302);
+    const url = oauth.buildAuthorizationUrl(config, { redirect_uri: redirectUri, scope: options.scope, state, dpop_jkt: jkt });
+    return c.redirect(url.href, 302);
   });
 
-  app.get("/callback", (c) => {
+  app.get("/callback", async (c) => {
     const session = take(c.req.query("state"));
     if (!session) {
       return c.text("unknown state", 400);
     }
-    return exchange(session, "authorization_code", c.req.query("code") ?? "", c);
+    // The library checks `state`, reads `code` (or the gateway's `error`) off the URL, and
+    // posts the code with a DPoP proof to the token endpoint.
+    const callbackUrl = new URL(c.req.url);
+    callbackUrl.protocol = new URL(redirectUri).protocol;
+    callbackUrl.host = new URL(redirectUri).host;
+    const tokens = await oauth.authorizationCodeGrant(config, callbackUrl, { expectedState: c.req.query("state") }, undefined, { DPoP: session.dpop });
+    return signedIn(tokens, session, c);
   });
 
   app.post("/refresh", async (c) => {
@@ -87,31 +115,20 @@ export function createRpApp(options: RpOptions): Hono {
     if (!session?.refreshToken) {
       return c.text("unknown session", 400);
     }
-    return exchange(session, "refresh_token", session.refreshToken, c);
+    const tokens = await oauth.refreshTokenGrant(config, session.refreshToken, undefined, { DPoP: session.dpop });
+    return signedIn(tokens, session, c);
   });
 
   return app;
 }
 
 /** Built without binding a port, so callers (and tests) decide where it listens. */
-export function createRpServer(options: RpOptions): http.Server {
-  return createAdaptorServer({ fetch: createRpApp(options).fetch }) as http.Server;
+export async function createRpServer(options: RpOptions): Promise<http.Server> {
+  const app = await createRpApp(options);
+  return createAdaptorServer({ fetch: app.fetch }) as http.Server;
 }
 
-/** The OAuth authorization request, with `dpop_jkt` so the tokens bind to this sign-in's key. */
-function authorizeUrl(options: RpOptions, state: string, jkt: string): string {
-  const query = new URLSearchParams({
-    response_type: "code",
-    client_id: options.clientId,
-    redirect_uri: `${options.rpUrl}/callback`,
-    scope: options.scope,
-    state,
-    dpop_jkt: jkt,
-  });
-  return `${options.gatewayUrl}/authorize?${query}`;
-}
-
-function claimsPage(claims: Record<string, unknown>, sessionId: string) {
+function claimsPage(claims: JWTPayload, sessionId: string) {
   return page(html`<dl>
       <dt>sub</dt><dd>${String(claims.sub)}</dd>
       <dt>scope</dt><dd>${String(claims.scope)}</dd>

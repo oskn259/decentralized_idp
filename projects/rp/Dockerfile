@@ -1,5 +1,5 @@
 # Build context is the repository root:  docker build -f projects/rp/Dockerfile .
-# The relying party depends on the workspace package projects/sdk, so both are built here.
+# The relying party uses only public OAuth client libraries; no workspace package is needed.
 
 # ---- build: TypeScript -> dist/ ----
 FROM node:22-alpine AS build
@@ -13,9 +13,8 @@ COPY projects/gateway/package.json projects/gateway/
 COPY projects/idpFront/package.json projects/idpFront/
 COPY projects/rp/package.json projects/rp/
 RUN npm ci
-COPY projects/sdk projects/sdk
 COPY projects/rp projects/rp
-RUN npm run build --prefix projects/sdk && npm run build --prefix projects/rp
+RUN npm run build --prefix projects/rp
 
 # ---- deps: production dependencies only ----
 FROM node:22-alpine AS deps
@@ -37,8 +36,6 @@ ENV NODE_ENV=production
 ENV PORT=3001
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=build /app/projects/sdk/package.json projects/sdk/
-COPY --from=build /app/projects/sdk/dist projects/sdk/dist
 COPY --from=build /app/projects/rp/package.json projects/rp/
 COPY --from=build /app/projects/rp/dist projects/rp/dist
 

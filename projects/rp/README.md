@@ -1,68 +1,57 @@
 # rp
 
-RP（relying party）の最小実装。ユーザーをゲートウェイの `/authorize` へ送り、戻ってきた認可コード（＝アサーション）をDPoP鍵に束縛されたアクセストークンに交換し、そのクレームを表示する。第三者のサービスの立ち位置であり、[`../gateway`](../gateway) や [`../idpFront`](../idpFront) とは別のコンポーネント。
+RP（relying party）。**普通のOAuthクライアントライブラリだけ**で組み立てた実装で、`openid-client` v6（RFC 8414のディスカバリ、認可コードフロー、DPoP）と `jose`（アクセストークンの検証）しか使わない。このリポジトリの `sdk` には依存せず、PASTAもFROSTもノードも一切知らない。それでも普通のOAuthクライアントとして動くという事実が、ゲートウェイが標準的なOAuth 2.0 + DPoPの認可サーバーであることを証明している。
 
-RPがパスワードを見ることはない。パスワードはブラウザの中のログインページ（`../idpFront`）でアサーションに変わり、RPに届くのはそのアサーションだけ。RPがノードと話すこともない。話す相手はゲートウェイの `/authorize`、`/token`、`/jwks.json` のみ。
-
-ゲートウェイと違い、RPは状態を持つ。サインインごとにDPoP鍵ペアを作り、`state` をキーにメモリ上で覚えておく。
-
-## ディレクトリ構成
-
-[`../sdk`](../sdk)（`@decentralized-idp/sdk`）のDPoP・JWT・base64urlをここでは使うだけ。
+## ファイル
 
 - `src/main.ts`: 環境変数を読んで起動
-- `src/http/server.ts`: [Hono](https://hono.dev) + `@hono/node-server` のルート一式と、サインインのセッション表
-- `src/token.ts`: `POST /token` の呼び出し。フォームボディにクレデンシャル、ヘッダにその1回限りのDPoPプルーフ。`../idpFront/cli.ts` もRP役としてこれを使う
-- `src/verify.ts`: アクセストークンの検証。ゲートウェイの `/jwks.json` から `kid` の合う鍵を取って署名を確かめ、`aud` が自分の `client_id` か、`cnf.jkt` がこのセッションのDPoP鍵かを見る
+- `src/http/server.ts`: `openid-client` でゲートウェイをディスカバリし、Hono のルート一式（`GET /`・`GET /login`・`GET /callback`・`POST /refresh`）とサインインのセッション表を持つ。セッションは最初 `state` をキーに置き、`/callback` で読んで消してから新しいidをキーに積み直す。どのキーも一度使われたら捨てる
 
 ## 流れ
 
-1. `GET /login`: `state` とDPoP鍵ペアを作って覚え、ゲートウェイの `/authorize` へ302。クエリには `dpop_jkt`（鍵のサムプリント）を乗せる。
-2. ゲートウェイがログインページへ送り、ページがアサーションを組み立てて `redirect_uri?code=<assertion>&state=<state>` に戻る。
-3. `GET /callback`: `state` を照合して忘れ、`code` を `/token` でトークンに交換し、アクセストークンを検証して `sub`・`scope`・`exp` を表示する。
-4. 表示ページの Refresh ボタンは `POST /refresh`。覚えておいたリフレッシュトークンを新しいDPoPプルーフとともに `/token` へ送り、同じページを描く。
-
-## 実行
-
-```bash
-npm ci --prefix ../..            # ワークスペース全体を一度に入れる
-npm run build --prefix ../sdk
-npm run dev    # tsxでsrc/main.tsを直接実行
-```
-
-ブラウザで `http://localhost:3001/` を開き、Sign in を押す。
-
-### 環境変数
-
-| 変数 | デフォルト | 意味 |
-|---|---|---|
-| `PORT` | `3001` | listenポート |
-| `GATEWAY_URL` | `http://localhost:3000` | ブラウザから見たゲートウェイのURL。`/authorize` の宛先であり、DPoPプルーフの `htu` が指す issuer |
-| `RP_URL` | `http://localhost:<PORT>` | 自身の公開URL。`redirect_uri` は `<RP_URL>/callback` |
-| `CLIENT_ID` | `demo_client` | OAuthの `client_id` |
-| `SCOPE` | `openid profile` | OAuthの `scope` |
+1. `GET /login`: 新しい `state` とDPoP鍵ペア（EdDSA、`randomDPoPKeyPair` + `getDPoPHandle`）を作ってセッション表に控え、鍵のサムプリントを `dpop_jkt` としてクエリに乗せ、ゲートウェイの認可エンドポイントへ302（`buildAuthorizationUrl`）
+2. ブラウザはゲートウェイが返すログインページに送られ、そこでの認証が認可コードになる
+3. `GET /callback?code&state`: `state` をセッション表から引いて消費し、`authorizationCodeGrant` が `code` をDPoPプルーフ付きでトークンエンドポイントへ送る
+4. 受け取ったアクセストークンを `jwtVerify` で検証し、`sub`・`scope`・`exp` を表示する
+5. 表示ページの Refresh は `POST /refresh`。保存しておいたリフレッシュトークンとDPoPハンドルを `refreshTokenGrant` に渡し、同じ検証・表示を繰り返す
 
 ## HTTP API
 
 | メソッド | パス | 内容 |
 |---|---|---|
 | GET | `/` | Sign in リンクのページ |
-| GET | `/login` | `state` とDPoP鍵を作り、ゲートウェイの `/authorize` へ302 |
-| GET | `/callback?code&state` | 認可コードをトークンに交換し、クレームを表示。未知の `state` は400。ゲートウェイの `/token` が返したエラーはそのステータスで表示 |
+| GET | `/login` | `state` とDPoP鍵を作り、ゲートウェイの認可エンドポイントへ302 |
+| GET | `/callback?code&state` | 認可コードをトークンに交換し、クレームを表示。未知の `state` は400 |
 | POST | `/refresh` | フォーム `session=<id>`。リフレッシュトークンで再取得し、クレームを表示。未知の `session` は400 |
+
+## 環境変数
+
+| 変数 | デフォルト | 意味 |
+|---|---|---|
+| `PORT` | `3001` | listenポート |
+| `GATEWAY_URL` | `http://localhost:3000` | ブラウザから見たゲートウェイのURL。OAuthのissuerでありディスカバリの起点 |
+| `RP_URL` | `http://localhost:<PORT>` | 自身の公開URL。`redirect_uri` は `<RP_URL>/callback` |
+| `CLIENT_ID` | `demo_client` | OAuthの `client_id` |
+| `SCOPE` | `profile` | OAuthの `scope` |
+
+## 検証の分担
+
+`state` の一致確認、DPoPプルーフの生成、レスポンスの `token_type` が `DPoP` であることの確認は `openid-client` がやる。`jwtVerify` は署名・`issuer`・`audience`・`typ: at+jwt` を見るが、`cnf.jkt` がこのセッションのDPoP鍵のサムプリントと一致するかまでは知らないので、それだけはrp自身が確かめる。
+
+`GATEWAY_URL` が `http:` の場合はディスカバリに `allowInsecureRequests` を渡す。平文httpのissuerを許すのはこのデモのためだけで、本番では使わない。
 
 ## 開発
 
 ```bash
-npm test          # vitest（../sdk のビルド込み）
+npm test          # vitest
 npm run typecheck
 npm run qa-gate    # typecheck + build + カバレッジ付きテスト
 ```
-
-`tests/http.test.ts` はゲートウェイなしでRPのルートだけを叩く。`tests/e2e.test.ts` と `tests/token.test.ts` は `../node` と `../gateway` を同一プロセスで実HTTPとして起こし、ログインページの `signOn` でアサーションを作る。
 
 ```bash
 # リポジトリルートで
 docker build -f projects/rp/Dockerfile -t idp-rp .
 docker run --rm -e GATEWAY_URL=http://localhost:3000 -p 3001:3001 idp-rp
 ```
+
+`compose.yaml` ではrpがゲートウェイのネットワーク名前空間を共有する（`network_mode: "service:gateway"`）ので、コンテナの中からも `http://localhost:3000` がゲートウェイを指す。

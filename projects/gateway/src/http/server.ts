@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { Gateway } from "../domain/usecase/gateway.js";
 import { DemoLog } from "./demo-log.js";
-import { authorizeEndpoint, authorizeQuery } from "./endpoint/authorize.js";
+import { authorizeEndpoint, authorizeQuery, authorizeRefusal } from "./endpoint/authorize.js";
 import { healthEndpoint } from "./endpoint/health.js";
 import { jwksEndpoint, metadataEndpoint } from "./endpoint/metadata.js";
 import { signOnBody, signOnEndpoint } from "./endpoint/sign-on.js";
@@ -31,10 +31,10 @@ export function createGatewayApp(gateway: Gateway, demo: DemoLog, options: Serve
   });
 
   app.get("/health", (c) => healthEndpoint(gateway, c));
-  app.get("/.well-known/openid-configuration", (c) => metadataEndpoint(gateway.group, c, demo));
+  app.get("/.well-known/oauth-authorization-server", (c) => metadataEndpoint(gateway.group, c, demo));
   app.use("/jwks.json", cors({ origin: options.rpOrigin }));
   app.get("/jwks.json", (c) => jwksEndpoint(gateway.group, c, demo));
-  app.get("/authorize", zValidator("query", authorizeQuery, invalidRequest(demo, "authorize")), (c) =>
+  app.get("/authorize", zValidator("query", authorizeQuery, authorizeRefusal(demo)), (c) =>
     authorizeEndpoint(c.req.valid("query"), c, demo)
   );
   app.post("/api/pasta/sign-on", requireJson, zValidator("json", signOnBody, badRequest(demo, "sign-on")), (c) =>

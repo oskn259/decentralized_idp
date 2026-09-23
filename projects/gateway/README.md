@@ -63,10 +63,12 @@ npm run dev    # tsxでsrc/main.tsを直接実行
 
 ## HTTP API
 
+RP から見ると RFC 6749 の認可コードフロー + RFC 9449 DPoP + RFC 9068 の JWT アクセストークン。`dpop_jkt` は RFC 9449 §10 の標準パラメータ。client 認証は `none`、PKCE は受け取って無視する（DPoP の鍵束縛が同じ役割を担う）。`../rp` は `openid-client` と `jose` だけで繋がる。
+
 | メソッド | パス | 内容 |
 |---|---|---|
 | GET | `/health` | 稼働確認。ノードが閾値を満たしていれば200、下回れば503 |
-| GET | `/.well-known/openid-configuration` | OAuthのメタデータ |
+| GET | `/.well-known/oauth-authorization-server` | OAuth のメタデータ（RFC 8414）。OpenID Connect ではないので id_token はない |
 | GET | `/jwks.json` | グループ公開鍵（CORS: `RP_ORIGIN`） |
 | GET | `/authorize` | 認可リクエストを受け、ログインページへ302 |
 | POST | `/api/pasta/sign-on` | ログインページからのサインオンの中継 |
@@ -78,9 +80,10 @@ GET /health
 → 200 { "status": "ok", "nodes": [{ "nodeId", "url", "healthy" }, ...] }
 → 503 { "status": "degraded", "nodes": [...] }   # 閾値に届く台数が健全でない
 
-GET /authorize?client_id=...&redirect_uri=...&response_type=code&scope=openid ...&dpop_jkt=<43文字>&state=...
+GET /authorize?client_id=...&redirect_uri=...&response_type=code&scope=...&dpop_jkt=<43文字>&state=...
 → 302 /login?step=login&c=<challenge>&client_id=...&redirect_uri=...&scope=...&state=...&dpop_jkt=...
-→ 400 { "error": "invalid_request", "error_description": "<field>: <理由>" }   # 例 "scope: must include openid"
+→ 302 redirect_uri?error=invalid_request&error_description=<field>: <理由>&state=...   # redirect_uri が使えるとき（RFC 6749 §4.1.2.1）
+→ 400 { "error": "invalid_request", "error_description": "<field>: <理由>" }        # redirect_uri が無い・不正なとき
 
 POST /api/pasta/sign-on
 { "username", "blinded": "<base64url 32byte>", "sessionNonce": "<base64url>",

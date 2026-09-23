@@ -1,7 +1,7 @@
 {
   "name": "decentralized-idp-rp",
   "version": "0.1.0",
-  "description": "A minimal relying party: sends the browser to the gateway's /authorize, exchanges the returned assertion for a DPoP-bound access token, and shows the claims",
+  "description": "A relying party built from ordinary OAuth client libraries (openid-client with DPoP, jose): sends the browser to the gateway, exchanges the code for a DPoP-bound access token, shows the claims",
   "type": "module",
   "private": true,
   "scripts": {
@@ -9,14 +9,15 @@
     "start": "node dist/main.js",
     "dev": "tsx src/main.ts",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build --prefix ../sdk && vitest run",
+    "test": "vitest run",
     "test:watch": "vitest",
-    "qa-gate": "npm run build --prefix ../sdk && npm run typecheck && npm run build && vitest run --coverage"
+    "qa-gate": "npm run typecheck && npm run build && vitest run --coverage"
   },
   "dependencies": {
-    "@decentralized-idp/sdk": "0.1.0",
     "@hono/node-server": "^2.1.1",
-    "hono": "^4.13.8"
+    "hono": "^4.13.8",
+    "jose": "^6.2.12",
+    "openid-client": "^6.8.8"
   },
   "devDependencies": {
     "@types/node": "^22.13.9",
