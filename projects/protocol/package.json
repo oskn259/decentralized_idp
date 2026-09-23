@@ -1,0 +1,10 @@
+{
+  "name": "@decentralized-idp/protocol",
+  "version": "0.1.0",
+  "description": "The protocol the components must agree on: JSON Schema of the node HTTP API, the written spec, and test vectors",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "qa-gate": "node scripts/check.mjs"
+  }
+}

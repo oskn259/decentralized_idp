@@ -1,0 +1,29 @@
+# ---- Node.js / TypeScript ----
+node_modules/
+dist/
+coverage/
+.npm/
+
+# ---- 鍵・秘密情報 ----
+# MPC/暗号実装のため、鍵や共有シークレットの誤コミットを防ぐ
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ---- macOS ----
+.DS_Store
+._*
+.AppleDouble
+
+# ---- エディタ / IDE ----
+.idea/
+*.iml
+.vscode/
+*.swp
+*~
+
+# ---- ツール ----
+.claude/settings.local.json

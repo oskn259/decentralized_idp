@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "nodeId": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 255
+    },
+    "at": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "rt": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "nodeId",
+    "at",
+    "rt"
+  ]
+}

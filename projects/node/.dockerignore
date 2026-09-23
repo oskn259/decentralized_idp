@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+tests
+vitest.config.ts
+README.md
+Dockerfile
+.dockerignore
+*.log
+.DS_Store

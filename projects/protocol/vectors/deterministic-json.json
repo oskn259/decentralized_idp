@@ -1,0 +1,76 @@
+{
+  "cases": [
+    {
+      "input": {
+        "b": 1,
+        "a": 2
+      },
+      "output": "{\"a\":2,\"b\":1}"
+    },
+    {
+      "input": {
+        "z": {
+          "y": [
+            3,
+            {
+              "k": "v",
+              "a": null
+            }
+          ],
+          "x": true
+        },
+        "a": "text"
+      },
+      "output": "{\"a\":\"text\",\"z\":{\"x\":true,\"y\":[3,{\"a\":null,\"k\":\"v\"}]}}"
+    },
+    {
+      "input": [
+        {
+          "b": 1,
+          "a": 2
+        },
+        [
+          2,
+          1
+        ],
+        "s",
+        0,
+        false,
+        null
+      ],
+      "output": "[{\"a\":2,\"b\":1},[2,1],\"s\",0,false,null]"
+    },
+    {
+      "input": {
+        "0": 4,
+        "": 0,
+        " ": 1,
+        "A": 2,
+        "a": 3
+      },
+      "output": "{\"\":0,\" \":1,\"0\":4,\"A\":2,\"a\":3}"
+    },
+    {
+      "input": {
+        "text": "quote \" backslash \\ newline \n tab \t 日本語"
+      },
+      "output": "{\"text\":\"quote \\\" backslash \\\\ newline \\n tab \\t 日本語\"}"
+    },
+    {
+      "input": {
+        "n": -1,
+        "zero": 0,
+        "big": 1700000000
+      },
+      "output": "{\"big\":1700000000,\"n\":-1,\"zero\":0}"
+    },
+    {
+      "input": {},
+      "output": "{}"
+    },
+    {
+      "input": [],
+      "output": "[]"
+    }
+  ]
+}

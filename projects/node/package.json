@@ -1,0 +1,33 @@
+{
+  "name": "decentralized-idp-node",
+  "version": "0.1.0",
+  "description": "Identity node: holds one FROST key share and, per user, one TOPRF key share",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build --prefix ../sdk && vitest run",
+    "test:watch": "vitest",
+    "qa-gate": "npm run build --prefix ../sdk && npm run typecheck && npm run build && vitest run --coverage"
+  },
+  "dependencies": {
+    "@decentralized-idp/sdk": "0.1.0",
+    "@hono/node-server": "^2.1.1",
+    "@hono/zod-validator": "^0.9.1",
+    "@noble/ciphers": "^1.2.1",
+    "@noble/curves": "^1.8.1",
+    "@noble/hashes": "^1.7.1",
+    "hono": "^4.13.8",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "@vitest/coverage-v8": "^5.0.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^5.0.1"
+  }
+}

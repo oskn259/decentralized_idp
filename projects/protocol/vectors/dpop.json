@@ -1,0 +1,43 @@
+{
+  "privateKey": "4KugNQCeN24SZ-YDTroMH2wNQXGfocBIfJKH3onK65k",
+  "publicKey": "wqT7OpIPmDEhLgqhoy5mPLe9n4zwmo_kspC0svNh9Us",
+  "jwk": {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "x": "wqT7OpIPmDEhLgqhoy5mPLe9n4zwmo_kspC0svNh9Us"
+  },
+  "thumbprintJson": "{\"crv\":\"Ed25519\",\"kty\":\"OKP\",\"x\":\"wqT7OpIPmDEhLgqhoy5mPLe9n4zwmo_kspC0svNh9Us\"}",
+  "jkt": "yB9NoGTAat2Hf7Ny5EN_8R9-tO79JtzZkqZ-W2YqEGY",
+  "proof": {
+    "header": {
+      "typ": "dpop+jwt",
+      "alg": "EdDSA",
+      "jwk": {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "x": "wqT7OpIPmDEhLgqhoy5mPLe9n4zwmo_kspC0svNh9Us"
+      }
+    },
+    "payload": {
+      "jti": "7d5e4f3a-2b1c-4d0e-9f8a-6b5c4d3e2f1a",
+      "htm": "POST",
+      "htu": "https://idp.example/token",
+      "iat": 1700000010
+    },
+    "headerJson": "{\"alg\":\"EdDSA\",\"jwk\":{\"crv\":\"Ed25519\",\"kty\":\"OKP\",\"x\":\"wqT7OpIPmDEhLgqhoy5mPLe9n4zwmo_kspC0svNh9Us\"},\"typ\":\"dpop+jwt\"}",
+    "payloadJson": "{\"htm\":\"POST\",\"htu\":\"https://idp.example/token\",\"iat\":1700000010,\"jti\":\"7d5e4f3a-2b1c-4d0e-9f8a-6b5c4d3e2f1a\"}",
+    "headerB64": "eyJhbGciOiJFZERTQSIsImp3ayI6eyJjcnYiOiJFZDI1NTE5Iiwia3R5IjoiT0tQIiwieCI6IndxVDdPcElQbURFaExncWhveTVtUExlOW40endtb19rc3BDMHN2Tmg5VXMifSwidHlwIjoiZHBvcCtqd3QifQ",
+    "payloadB64": "eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9pZHAuZXhhbXBsZS90b2tlbiIsImlhdCI6MTcwMDAwMDAxMCwianRpIjoiN2Q1ZTRmM2EtMmIxYy00ZDBlLTlmOGEtNmI1YzRkM2UyZjFhIn0",
+    "signingInput": "eyJhbGciOiJFZERTQSIsImp3ayI6eyJjcnYiOiJFZDI1NTE5Iiwia3R5IjoiT0tQIiwieCI6IndxVDdPcElQbURFaExncWhveTVtUExlOW40endtb19rc3BDMHN2Tmg5VXMifSwidHlwIjoiZHBvcCtqd3QifQ.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9pZHAuZXhhbXBsZS90b2tlbiIsImlhdCI6MTcwMDAwMDAxMCwianRpIjoiN2Q1ZTRmM2EtMmIxYy00ZDBlLTlmOGEtNmI1YzRkM2UyZjFhIn0",
+    "signature": "t3SXAeMLT7kP8br3Hv8t5ropBZ81beiy8TgaI2Q6sEMskxkIv6RJJcMSgnU-1xc_kAzu80UjS4kG7NMKXqbgAQ",
+    "jwt": "eyJhbGciOiJFZERTQSIsImp3ayI6eyJjcnYiOiJFZDI1NTE5Iiwia3R5IjoiT0tQIiwieCI6IndxVDdPcElQbURFaExncWhveTVtUExlOW40endtb19rc3BDMHN2Tmg5VXMifSwidHlwIjoiZHBvcCtqd3QifQ.eyJodG0iOiJQT1NUIiwiaHR1IjoiaHR0cHM6Ly9pZHAuZXhhbXBsZS90b2tlbiIsImlhdCI6MTcwMDAwMDAxMCwianRpIjoiN2Q1ZTRmM2EtMmIxYy00ZDBlLTlmOGEtNmI1YzRkM2UyZjFhIn0.t3SXAeMLT7kP8br3Hv8t5ropBZ81beiy8TgaI2Q6sEMskxkIv6RJJcMSgnU-1xc_kAzu80UjS4kG7NMKXqbgAQ",
+    "expected": {
+      "htm": "POST",
+      "htu": "https://idp.example/token",
+      "iat": 1700000010,
+      "jkt": "yB9NoGTAat2Hf7Ny5EN_8R9-tO79JtzZkqZ-W2YqEGY",
+      "now": 1700000015,
+      "maxAgeSeconds": 60
+    }
+  }
+}

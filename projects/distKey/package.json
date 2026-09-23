@@ -1,0 +1,26 @@
+{
+  "name": "decentralized-idp-distkey",
+  "version": "0.1.0",
+  "description": "Trusted dealer, run once: splits the group signing key and each user's TOPRF key across the nodes and writes their key files",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build --prefix ../sdk && vitest run",
+    "test:watch": "vitest",
+    "qa-gate": "npm run build --prefix ../sdk && npm run typecheck && npm run build && vitest run --coverage"
+  },
+  "dependencies": {
+    "@decentralized-idp/sdk": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "@vitest/coverage-v8": "^5.0.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^5.0.1"
+  }
+}

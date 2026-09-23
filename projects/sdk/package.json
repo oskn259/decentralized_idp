@@ -1,0 +1,33 @@
+{
+  "name": "@decentralized-idp/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript implementation of the protocol, shared by the sample components: the arithmetic (Shamir, FROST, TOPRF, AEAD), the token layouts, DPoP, and the node API's wire schemas",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "protocol:generate": "tsx scripts/generate-protocol.ts",
+    "qa-gate": "npm run typecheck && npm run build && vitest run --coverage"
+  },
+  "dependencies": {
+    "@noble/ciphers": "^1.2.1",
+    "@noble/curves": "^1.8.1",
+    "@noble/hashes": "^1.7.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "@vitest/coverage-v8": "^5.0.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^5.0.1"
+  }
+}

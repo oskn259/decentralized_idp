@@ -1,0 +1,28 @@
+{
+  "name": "decentralized-idp-rp",
+  "version": "0.1.0",
+  "description": "A minimal relying party: sends the browser to the gateway's /authorize, exchanges the returned assertion for a DPoP-bound access token, and shows the claims",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build --prefix ../sdk && vitest run",
+    "test:watch": "vitest",
+    "qa-gate": "npm run build --prefix ../sdk && npm run typecheck && npm run build && vitest run --coverage"
+  },
+  "dependencies": {
+    "@decentralized-idp/sdk": "0.1.0",
+    "@hono/node-server": "^2.1.1",
+    "hono": "^4.13.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "@vitest/coverage-v8": "^5.0.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^5.0.1"
+  }
+}

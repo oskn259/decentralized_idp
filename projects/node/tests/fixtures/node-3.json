@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "nodeId": 3,
+  "threshold": 2,
+  "total": 3,
+  "groupPublicKey": "a665f43f13ae9652f8004b9cfbc9bdd2c6fe086e659eb2797e54851f8d21f80a",
+  "secretKeyShare": "08dbb5aaae0c171917c5076a4b2a1dc28283619134acb5528e7be34927ef48cb",
+  "users": [
+    {
+      "username": "alice",
+      "sub": "usr_alice_12345",
+      "toprfKeyShare": {
+        "id": 3,
+        "value": "088eab803b027b0acdf3099e7f5f531d0aac15c78db822a95d56626d1c3a162f"
+      },
+      "h_i": "899e428f23618a768ff88624a63b3be11c24026b01cc68652818ff204cadffdc"
+    },
+    {
+      "username": "bob",
+      "sub": "usr_bob_67890",
+      "toprfKeyShare": {
+        "id": 3,
+        "value": "0eea3b6f4dec6dd2143d392f99ed4439f183d70d0e79b7e7cb5001601d110524"
+      },
+      "h_i": "6c887e0dfe4fda59ed8b338fefd269142d7e4d092079f2180a6f86031622abc1"
+    }
+  ]
+}

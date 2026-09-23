@@ -1,0 +1,49 @@
+# The whole system on one machine: the dealer once, three identity nodes, the gateway with
+# the login page, and a relying party.
+#
+#   docker compose up --build --wait
+#
+# The issuer of every token is `http://localhost:3000`, the gateway as a browser on the host
+# sees it. The relying party must reach the gateway under that same string (its DPoP proofs
+# name it), so it shares the gateway's network namespace: there, localhost:3000 is the gateway.
+
+x-issuer: &issuer http://localhost:3000
+
+services:
+  distkey:
+    build: { context: ., dockerfile: projects/distKey/Dockerfile }
+    command: ["--out", "/secrets"]
+    volumes: ["./secrets:/secrets"]
+
+  node1: &node
+    build: { context: ., dockerfile: projects/node/Dockerfile }
+    environment: { NODE_CONFIG: /secrets/node-1.json, ISSUER: *issuer }
+    volumes: ["./secrets:/secrets:ro"]
+    depends_on: { distkey: { condition: service_completed_successfully } }
+
+  node2:
+    <<: *node
+    environment: { NODE_CONFIG: /secrets/node-2.json, ISSUER: *issuer }
+
+  node3:
+    <<: *node
+    environment: { NODE_CONFIG: /secrets/node-3.json, ISSUER: *issuer }
+
+  gateway:
+    build: { context: ., dockerfile: projects/gateway/Dockerfile }
+    environment:
+      ISSUER: *issuer
+      NODE_URLS: http://node1:4000,http://node2:4000,http://node3:4000
+      RP_ORIGIN: http://localhost:3001
+    volumes: ["./secrets:/secrets:ro"]
+    ports: ["3000:3000", "3001:3001"]
+    depends_on:
+      node1: { condition: service_healthy }
+      node2: { condition: service_healthy }
+      node3: { condition: service_healthy }
+
+  rp:
+    build: { context: ., dockerfile: projects/rp/Dockerfile }
+    environment: { GATEWAY_URL: *issuer, RP_URL: http://localhost:3001 }
+    network_mode: "service:gateway"
+    depends_on: { gateway: { condition: service_healthy } }

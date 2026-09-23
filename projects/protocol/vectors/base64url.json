@@ -1,0 +1,49 @@
+{
+  "valid": [
+    {
+      "hex": "",
+      "base64url": ""
+    },
+    {
+      "hex": "66",
+      "base64url": "Zg"
+    },
+    {
+      "hex": "666f",
+      "base64url": "Zm8"
+    },
+    {
+      "hex": "666f6f",
+      "base64url": "Zm9v"
+    },
+    {
+      "hex": "666f6f62",
+      "base64url": "Zm9vYg"
+    },
+    {
+      "hex": "666f6f6261",
+      "base64url": "Zm9vYmE"
+    },
+    {
+      "hex": "666f6f626172",
+      "base64url": "Zm9vYmFy"
+    },
+    {
+      "hex": "fffbfe",
+      "base64url": "__v-"
+    },
+    {
+      "hex": "0000",
+      "base64url": "AAA"
+    }
+  ],
+  "invalid": [
+    "Zm9v=",
+    "Zm9+",
+    "Zm8/",
+    "Zg=",
+    "Z",
+    "Zm9vY",
+    "Zm 9v"
+  ]
+}

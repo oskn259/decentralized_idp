@@ -1,0 +1,53 @@
+{
+  "threshold": 2,
+  "total": 3,
+  "password": "correct horse battery staple",
+  "k": "074dac9a94b1b6d5d4a98155b2314d7cda408d16ddcc6cf074204d5080b06644",
+  "shares": [
+    {
+      "id": 1,
+      "k_i": "050e8b70bb53af3a08a957340d44c15fc9ae84293764532d9fa10ff48a7b56af"
+    },
+    {
+      "id": 2,
+      "k_i": "02cf6a46e1f5a79e3ca92d1268583542b91c7b3b90fc396acb21d2989446471a"
+    },
+    {
+      "id": 3,
+      "k_i": "0090491d0897a00270a902f0c36ba925a88a724dea941fa7f6a2953c9e113785"
+    }
+  ],
+  "r": "0d57d742b1b02dc21e0de67cc52c406a58ca7811f6443ff202748ef8db5322d7",
+  "H1": "kGWxVOgjXkM1UaVfWDWtU17UhvJUCn7rOdDYZEeIyCw",
+  "A": "Qsr1vKZ_h2AyTzTdr7-Chxucw3_46dQdN6dRND-uMzA",
+  "participants": [
+    1,
+    2
+  ],
+  "partials": [
+    {
+      "id": 1,
+      "B_i": "ylxye4zv2IwMUXSjcApgMBWUXrk7oH7Ca6d8VstZikk"
+    },
+    {
+      "id": 2,
+      "B_i": "aIlHI8vyVxOQ6L4l1cBFAwlrrzeUTxIgxyMTKadJ3BQ"
+    }
+  ],
+  "v": "ci0df8q-rL94Gxv2V9SXhtJe_1ji1JboEp4sWrsKtHQ",
+  "h": "cEKOHSgogZ3NU31dgFtlSm745wLdLE4tLw-KEJ6IiJk",
+  "serverKeys": [
+    {
+      "id": 1,
+      "h_i": "gUvkfqJDDnaopK7OCLgtrheV7Brm0dwt9YtK_C0KY7s"
+    },
+    {
+      "id": 2,
+      "h_i": "K_3V0st5ODMOLok20GJ6bs3qwK71ohP7NXuZpCWgqws"
+    },
+    {
+      "id": 3,
+      "h_i": "L4LkYLFCmRovZIgFKeMwwCqCRsOKR_essw1TUy3xPaE"
+    }
+  ]
+}
