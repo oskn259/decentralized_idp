@@ -8,7 +8,7 @@
 
 対象はノードの HTTP API と、その上で動く暗号計算・トークンの形・時間の規則・鍵ファイルの形。ゲートウェイがブラウザと RP に向けて公開する OAuth のエンドポイントは [`../gateway`](../gateway) の README にあり、この仕様の対象外。
 
-読者は FROST（閾値 Ed25519 署名）、TOPRF（閾値 OPRF）、OAuth 2.0、DPoP の基本を知っているものとする。記号は `s_i` = ノード i の署名鍵シェア、`Y` = グループ公開鍵、`k_i` = ユーザーごとの TOPRF 鍵シェア、`h` = パスワードから導かれるマスター鍵、`h_i` = ノード i がシェアを暗号化する鍵、`pk_i` = ノード i の封印用 X25519 公開鍵、`‖` = バイト列の連結、`L` = Ed25519 の素数位数部分群の位数。
+読者は FROST（閾値 Ed25519 署名）、TOPRF（閾値 OPRF）、OAuth 2.0、DPoP の基本を知っているものとする。記号は `s_i` = ノード i の署名鍵シェア、`Y` = グループ公開鍵、`k_i` = ユーザーごとの TOPRF 鍵シェア、`h` = パスワードから導かれるマスター鍵、`h_i` = ノード i がシェアを暗号化する鍵、`‖` = バイト列の連結、`L` = Ed25519 の素数位数部分群の位数。
 
 ```
 schema/node-api/*.json   ノード HTTP API の各ボディの JSON Schema（draft 2020-12）
@@ -41,16 +41,16 @@ base64url のデコーダは、アルファベット外の文字（`=`、`+`、`
 
 | メソッド | パス | 内容 | リクエスト | レスポンス |
 |---|---|---|---|---|
-| GET | `/health` | 稼働確認、グループ公開鍵、封印用公開鍵 | なし | [`health.response.json`](schema/node-api/health.response.json) |
-| POST | `/register` | 新しいユーザーのこのノード向けシェアを受け取る | [`register.request.json`](schema/node-api/register.request.json) | [`register.response.json`](schema/node-api/register.response.json) |
+| GET | `/health` | 稼働確認、グループ公開鍵、ブラウザ向けの自分の URL | なし | [`health.response.json`](schema/node-api/health.response.json) |
+| POST | `/register` | 新しいユーザーのこのノード向けシェアを、ブラウザから直接受け取る | [`register.request.json`](schema/node-api/register.request.json) | [`register.response.json`](schema/node-api/register.response.json) |
 | POST | `/commit` | FROST ラウンド 1 を開く | [`commit.request.json`](schema/node-api/commit.request.json) | [`commit.response.json`](schema/node-api/commit.response.json) |
 | POST | `/sign-on` | TOPRF 評価と、認証アサーションへの FROST ラウンド 2 | [`sign-on.request.json`](schema/node-api/sign-on.request.json) | [`sign-on.response.json`](schema/node-api/sign-on.response.json) |
 | POST | `/sign` | アクセストークンとリフレッシュトークンへの FROST ラウンド 2 | [`sign.request.json`](schema/node-api/sign.request.json) | [`sign.response.json`](schema/node-api/sign.response.json) |
 
 スキーマが表せない制約:
 
-- `groupPublicKey`、`D`、`E`、`blinded`、`toprfPartial` はデコードして 32 バイトでなければならない。`blinded` と `toprfPartial` は ristretto255 の正準表現、その他は Ed25519 の点。`sealingPublicKey` と `ephemeralPublicKey` は X25519 の 32 バイト
-- `/register` の `share` は、[封印](#封印)の規則で自ノードの `pk_i` に封印され、AAD が自ノードの `nodeId` とリクエストの `username` に一致するものでなければならない。開封できなければ 400。`username` がすでにあれば 409。`sub` はゲートウェイが採番したもので、ノードはそのまま保存する
+- `groupPublicKey`、`D`、`E`、`blinded`、`toprfPartial` はデコードして 32 バイトでなければならない。`blinded` と `toprfPartial` は ristretto255 の正準表現、その他は Ed25519 の点。`h_i` も 32 バイト
+- `/register` はブラウザが各ノードに直接送る。`username` か `sub` がすでにあれば 409。`sub` はブラウザが選ぶ（sdk は UUID）ので、ノードは他人の `sub` を名乗る登録を一意性で防ぐ。ノードは `/register` に対し、issuer のオリジン（ログイン画面の出所）からの CORS を許可する
 - `sessionNonce` は 1 バイト以上のクライアント乱数。sdk のブラウザ実装は 16 バイトを使う
 - `/sign-on` の `nonce` は、値がないときはメンバーごと省く。`null` は拒否する（署名対象のペイロードに `nonce` を含めるか否かが変わるため）
 - `/sign-on` の `scope` は空文字列でもよい
@@ -63,8 +63,8 @@ base64url のデコーダは、アルファベット外の文字（`=`、`+`、`
 
 | ステータス | 意味 |
 |---|---|
-| 400 | ボディが不正（`body.<field> <理由>` の形。例 `body.request.blinded must decode to 32 bytes, got 31`）、または処理の拒否（未知のユーザー、期限切れ、署名不一致、ラウンドが見つからない、封印を開けない等） |
-| 409 | `/register` の `username` がすでにある |
+| 400 | ボディが不正（`body.<field> <理由>` の形。例 `body.request.blinded must decode to 32 bytes, got 31`）、または処理の拒否（未知のユーザー、期限切れ、署名不一致、ラウンドが見つからない等） |
+| 409 | `/register` の `username` か `sub` がすでにある |
 | 404 | 未知のパスまたはメソッド |
 | 500 | 想定外のエラー |
 
@@ -153,7 +153,7 @@ H1(pw) = hash_to_ristretto255( SHA-512( "PASTA-TOPRF-H1" ‖ u64LE(len(pw)) ‖ 
                h_i = SHA-512( "PASTA-TOPRF-H-PRIME" ‖ h ‖ u16LE(i) )[0..32]
 ```
 
-`enc(v)` は `v` の 32 バイト正準表現。ノードは `k_i` と `h_i` を保持し、`pw` も `h` も知らない。どちらも登録時にブラウザが計算する。ブラウザは `k` を持っているので、`v = k·H1(pw)` をノードなしで求め、上と同じ `h` と `h_i` を導く。ノードは `blinded` を ristretto255 の正準表現として復号できなければ拒否する。
+`enc(v)` は `v` の 32 バイト正準表現。ノードは `k_i` と `h_i` を保持し、`pw` も `h` も知らない。どちらも登録時にブラウザが計算して `/register` で直接渡す。ブラウザは `k` を持っているので、`v = k·H1(pw)` をノードなしで求め、上と同じ `h` と `h_i` を導く。ゲートウェイは登録に関与しない。ノードは `blinded` を ristretto255 の正準表現として復号できなければ拒否する。
 
 ## AEAD
 
@@ -168,22 +168,6 @@ H1(pw) = hash_to_ristretto255( SHA-512( "PASTA-TOPRF-H1" ‖ u64LE(len(pw)) ‖ 
 | 平文 | `{"z_i":"<z_i の 10 進表現>"}` の UTF-8。空白なし、メンバーはこの 1 つだけ |
 
 クライアントは自分で導いた `h_i` で復号する。パスワードが違えば `h_i` が違い、タグ検証で失敗する。ノードはパスワードの正誤を知らない。
-
-## 封印
-
-登録時、ブラウザはノード i 向けのシェアをノード i だけが開ける箱に入れ、ゲートウェイはそれを読まずに中継する。ゲートウェイが `t` 個の `k_i` と `h_i` を平文で見ると、`k` を復元して `h_i` と突き合わせ、パスワードへの辞書攻撃ができるためである。
-
-| 項目 | 値 |
-|---|---|
-| 受け手の鍵 | `pk_i`: ノード i の X25519 公開鍵。`/health` の `sealingPublicKey` |
-| 送り手の鍵 | 箱ごとに新しい X25519 の一時鍵 `(esk, epk)` |
-| 鍵導出 | `key = HKDF-SHA256( ikm = x25519(esk, pk_i), salt = 空, info = "PASTA-SEAL" ‖ epk ‖ pk_i )[0..32]` |
-| 暗号 | ChaCha20-Poly1305、ナンスは 12 バイトのゼロ（鍵が箱ごとに新しいため） |
-| 平文 | `{"h_i":"<h_i の hex 64 桁>","k_i":"<k_i の hex 64 桁>"}` の決定的 JSON |
-| AAD | `{"nodeId":<i>,"username":"<username>"}` の決定的 JSON |
-| ワイヤ | `share: { ephemeralPublicKey: base64url(epk), ciphertext: base64url(暗号文 ‖ タグ) }` |
-
-ノードは自分の秘密鍵で開封し、AAD の `nodeId` が自分のもの、`username` がリクエストのものであることを、タグ検証によって確かめる。
 
 ## DPoP
 
@@ -251,8 +235,7 @@ sdk のゲートウェイは `claims.iat = now`、`claims.exp = now + 3600` で�
   "threshold": 2,
   "total": 3,
   "groupPublicKey": "<hex 64桁: Y>",
-  "secretKeyShare": "<hex 64桁: s_i>",
-  "sealingSecretKey": "<hex 64桁: X25519 秘密鍵 (32 バイト)>"
+  "secretKeyShare": "<hex 64桁: s_i>"
 }
 ```
 
@@ -272,7 +255,6 @@ sdk のゲートウェイは `claims.iat = now`、`claims.exp = now + 3600` で�
 | `frost.json` | 2-of-3 のグループ（`groupSecret`、`shares`、`groupPublicKey`）でノード 1 と 3 が `msg`（`tokens.json` のアサーションの署名入力）に署名する 1 回分。署名者ごとに `d`・`e`・`D`・`E`・`λ_i`・`ρ_i`・`z_i`、全体の `R`・`c`・`signature`。`signature` は `groupPublicKey` の下で `msg` の Ed25519 署名として検証できる |
 | `toprf.json` | 固定のパスワード・`k`・`k_i`・`r` に対する `H1`・`A`・`B_i`（ノード 1 と 2）・`v`・`h`、およびノード 1〜3 の `h_i` |
 | `aead.json` | `toprf.json` のノード 1 の `h_i` を鍵に、`frost.json` のノード 1 の `z_i` を平文として、`tokens.json` のアサーションの署名入力を AAD とした暗号化。`sessionNonce` から導いた `nonce` も含む |
-| `seal.json` | `toprf.json` のノード 1 の `k_i` と `h_i` を、固定のノード秘密鍵と一時鍵でノード 1 に封印したもの。平文と AAD の JSON も含む |
 | `dpop.json` | 固定の Ed25519 鍵に対する JWK・サムプリント（`thumbprintJson` はハッシュ入力）と、`/token` 向けのプルーフ 1 つ。`proof.expected` はそれを受理する検証条件 |
 
-sdk はこれらを `projects/sdk/tests/protocol.test.ts` で使う。スキーマとベクタを sdk 自身の関数から生成し直して、コミットされたファイルと完全一致することを確かめ、さらに FROST 署名の検証・TOPRF の unblind と finalize・AEAD の復号・封印の開封・DPoP プルーフの受理をコミットされた値に対して行う。sdk 側の意図した変更でこのテストが落ちたときは、`projects/sdk` で `npm run protocol:generate` を実行して差分を確認し、この README も合わせて改める。
+sdk はこれらを `projects/sdk/tests/protocol.test.ts` で使う。スキーマとベクタを sdk 自身の関数から生成し直して、コミットされたファイルと完全一致することを確かめ、さらに FROST 署名の検証・TOPRF の unblind と finalize・AEAD の復号・DPoP プルーフの受理をコミットされた値に対して行う。sdk 側の意図した変更でこのテストが落ちたときは、`projects/sdk` で `npm run protocol:generate` を実行して差分を確認し、この README も合わせて改める。

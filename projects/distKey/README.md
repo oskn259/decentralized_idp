@@ -1,16 +1,15 @@
 # distKey
 
-ノード群を起動する前に一度だけ実行する、信頼されたディーラー。グループの Ed25519 署名鍵を t-of-n で Shamir 分割してノード i に `s_i` を渡し、ノードごとに封印用の X25519 鍵ペアを 1 組ずつ生成して渡す。
+ノード群を起動する前に一度だけ実行する、信頼されたディーラー。グループの Ed25519 署名鍵を t-of-n で Shamir 分割してノード i に `s_i` を渡す。
 
 グループ鍵全体と全シェアを目にするのはこのコマンドだけ。DKG（鍵の分散生成）はスコープ外。
 
-ユーザー登録はここでは行わない。[`../idpFront`](../idpFront) のログインページがブラウザの中でユーザーごとの TOPRF 鍵を生成し、各ノードの封印用公開鍵でシェアを封印して [`../node`](../node) の `/register` に送る。distKey はパスワードを一度も見ない。
+ユーザー登録はここでは行わない。[`../idpFront`](../idpFront) のログインページがブラウザの中でユーザーごとの TOPRF 鍵を生成し、ノードごとのシェアを [`../node`](../node) の `/register` に直接送る。distKey はパスワードを一度も見ない。
 
 ## ディレクトリ構成
 
-FROST・Shamir・封印の計算は [`../sdk`](../sdk)（`@decentralized-idp/sdk`）にあり、ここでは使うだけ。鍵ファイルの形式は [`../protocol`](../protocol/README.md#鍵ファイル) が定める。
+FROST・Shamir の計算は [`../sdk`](../sdk)（`@decentralized-idp/sdk`）にあり、ここでは使うだけ。鍵ファイルの形式は [`../protocol`](../protocol/README.md#鍵ファイル) が定める。
 
-- `domain/usecase/distribute-keys.ts`: グループ鍵を分割し、ノードごとの封印用鍵ペアを生成する。出力（`DistributedKeys`）の型もここ
 - `infra/output.ts`: 生成した鍵を `group.json` / `node-<id>.json` にして書き出す
 - `main.ts`: CLI の引数解析と実行
 

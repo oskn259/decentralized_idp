@@ -61,16 +61,21 @@ export const healthResponse = z.object({
   status: z.literal("ok"),
   nodeId,
   groupPublicKey: bytes(32),
-  /** X25519 key the browser seals this node's share of a new user to. */
-  sealingPublicKey: bytes(32),
+  /** Where a browser reaches this node for `/register`. */
+  publicUrl: text,
 });
 
-// ---- POST /register: one user's share for this node ---------------------------------------
+// ---- POST /register: one user's share for this node, straight from the browser ---------------
 
-/** `{ k_i, h_i }` sealed to this node (`seal.ts`), under the AAD `register.ts` defines. */
-export const sealedBox = z.object({ ephemeralPublicKey: bytes(32), ciphertext: bytes() });
-
-export const registerRequest = z.object({ username: text, sub: text, share: sealedBox });
+export const registerRequest = z.object({
+  username: text,
+  /** Chosen by the browser; the node refuses one it already holds. */
+  sub: text,
+  /** k_i */
+  toprfKeyShare: scalar,
+  /** h_i = H(h, i) */
+  h_i: bytes(32),
+});
 export const registerResponse = z.object({ nodeId });
 
 // ---- POST /commit: FROST round 1 ------------------------------------------------------

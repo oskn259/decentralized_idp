@@ -3,7 +3,6 @@
   "nodeId": 2,
   "threshold": 2,
   "total": 3,
-  "groupPublicKey": "cd7bbb94c9af745b3fd6128cb1d7fd22a82e48fc82f5eb08538dcaeddbb739f4",
-  "secretKeyShare": "04d4193a4528bcc1c8cb859d81d002080af6e0645f3f56ca70673aa68a45b1ff",
-  "sealingSecretKey": "76e2ab7e46e63b35bbca21bf7708e1229d44d59bba71dcc06d87ef0e4678257a"
+  "groupPublicKey": "45cfd2da11c1e34cb65bc16e83920f42d5eeb64b4c8800a9bf20e1a3102a87f4",
+  "secretKeyShare": "0924e26779a43ac4bf8dff5de7bd2c86a9a638f8ed806665f1220f33a2a4baa4"
 }

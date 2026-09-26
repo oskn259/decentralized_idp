@@ -56,7 +56,6 @@ function nodeFile(keys: DistributedKeys, node: NodeKeys): OutputFile {
       total: keys.total,
       groupPublicKey: bytesToHex(keys.groupPublicKey),
       secretKeyShare: bigIntToHex(node.secretKeyShare),
-      sealingSecretKey: bytesToHex(node.sealingKeyPair.secretKey),
     }),
   };
 }

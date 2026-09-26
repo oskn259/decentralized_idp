@@ -10,29 +10,20 @@
       "type": "string",
       "minLength": 1
     },
-    "share": {
-      "type": "object",
-      "properties": {
-        "ephemeralPublicKey": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^[A-Za-z0-9_-]+$"
-        },
-        "ciphertext": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^[A-Za-z0-9_-]+$"
-        }
-      },
-      "required": [
-        "ephemeralPublicKey",
-        "ciphertext"
-      ]
+    "toprfKeyShare": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "h_i": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$"
     }
   },
   "required": [
     "username",
     "sub",
-    "share"
+    "toprfKeyShare",
+    "h_i"
   ]
 }

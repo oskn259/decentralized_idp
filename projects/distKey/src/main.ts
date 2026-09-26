@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import { DistributedKeys, distributeKeys } from "./domain/usecase/distribute-keys.js";
 import { existingOutputFiles, outputFileNames, outputFiles, writeOutputFiles } from "./infra/output.js";
 
-const USAGE = `distKey - splits the group signing key across the nodes and gives each a sealing key
+const USAGE = `distKey - splits the group signing key across the nodes
 
 Usage:
   distKey --out <dir> [--threshold 2] [--total 3] [--force]
