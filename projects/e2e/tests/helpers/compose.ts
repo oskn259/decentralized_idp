@@ -48,3 +48,11 @@ export function restore(): void {
 export function logs(): string {
   return compose("logs", "--no-color");
 }
+
+/** What the services refused or paid, for the test output. Read before `restore`, which recreates the containers. */
+export function refusals(): string {
+  return logs()
+    .split("\n")
+    .filter((line) => /rejected|pay |unreachable/.test(line))
+    .join("\n");
+}

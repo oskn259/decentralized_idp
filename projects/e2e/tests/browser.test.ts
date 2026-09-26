@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { Browser, Page, chromium } from "playwright";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { GATEWAY_URL, RP_URL, SCOPE, logs, restore, stopNode, up } from "./helpers/compose.js";
+import { GATEWAY_URL, RP_URL, SCOPE, logs, refusals, restore, stopNode, up } from "./helpers/compose.js";
 
 /**
  * A person at the relying party's page, in Chromium, against the containers. One path is
@@ -26,6 +26,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await browser?.close();
+  console.log(refusals());
   restore();
 });
 

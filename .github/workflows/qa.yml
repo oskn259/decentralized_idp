@@ -27,5 +27,8 @@ jobs:
         env:
           E2E_SECRETS: ${{ secrets.E2E_SECRETS }}
       - run: npm run qa-gate
+        env:
+          # A dedicated RPC when the secret is set; otherwise compose falls back to the public one.
+          RPC_URL: ${{ secrets.RPC_URL }}
       - if: failure()
         run: docker compose logs --no-color | tail -80
