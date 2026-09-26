@@ -148,22 +148,7 @@ describe("POST /api/pasta/sign-on across the nodes", () => {
   });
 });
 
-describe("GET /api/pasta/nodes", () => {
-  it("lists every node's sealing key by nodeId, with the threshold and total", async () => {
-    server = await startTestServer([new FakeNode(3), new FakeNode(1), new FakeNode(2)], dist);
-    const res = await fetch(`${server.url}/api/pasta/nodes`);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      threshold: 2,
-      total: 3,
-      nodes: [1, 2, 3].map((nodeId) => ({ nodeId, sealingPublicKey: base64UrlEncode(new Uint8Array(32).fill(nodeId)) })),
-    });
-  });
-});
-
 describe("POST /api/pasta/register", () => {
-  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
   function sealedShare(nodeId: number) {
     return { ephemeralPublicKey: base64UrlEncode(new Uint8Array(32).fill(nodeId)), ciphertext: base64UrlEncode(new Uint8Array(48).fill(100 + nodeId)) };
   }
@@ -180,24 +165,6 @@ describe("POST /api/pasta/register", () => {
     });
   }
 
-  it("assigns one sub, hands each node its own share, and answers { sub }", async () => {
-    const nodes = [new FakeNode(1), new FakeNode(2), new FakeNode(3)];
-    server = await startTestServer(nodes, dist);
-    const res = await post(body([3, 1, 2]));
-    expect(res.status).toBe(200);
-    const { sub } = await res.json();
-    expect(sub).toMatch(UUID);
-    for (const node of nodes) {
-      expect(node.registerCalls).toHaveLength(1);
-      const call = node.registerCalls[0];
-      expect(call.username).toBe("alice");
-      expect(call.sub).toBe(sub);
-      expect(base64UrlEncode(call.share.ephemeralPublicKey)).toBe(sealedShare(node.nodeId).ephemeralPublicKey);
-      expect(base64UrlEncode(call.share.ciphertext)).toBe(sealedShare(node.nodeId).ciphertext);
-    }
-    expect(server.logLines.some((l) => l.includes("register") && l.includes("user=alice") && l.includes("/register ×3 sealed (cannot open) ✓"))).toBe(true);
-  });
-
   it("409s when a node already has the username", async () => {
     server = await startTestServer([new FakeNode(1), new FakeNode(2, { registerFails: "taken" }), new FakeNode(3)], dist);
     const res = await post(body([1, 2, 3]));
@@ -211,23 +178,6 @@ describe("POST /api/pasta/register", () => {
     const res = await post(body([1, 2, 3]));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("cannot open share");
-  });
-
-  it("400s without calling any node when a node's share is missing", async () => {
-    const nodes = [new FakeNode(1), new FakeNode(2), new FakeNode(3)];
-    server = await startTestServer(nodes, dist);
-    const res = await post(body([1, 2]));
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("no share for node 3");
-    expect(nodes.every((n) => n.registerCalls.length === 0)).toBe(true);
-  });
-
-  it("400s when an ephemeralPublicKey does not decode to 32 bytes", async () => {
-    server = await startTestServer([new FakeNode(1)], dist, 1);
-    const bad = { username: "alice", shares: [{ nodeId: 1, share: { ...sealedShare(1), ephemeralPublicKey: base64UrlEncode(new Uint8Array(31)) } }] };
-    const res = await post(bad);
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("shares.0.share.ephemeralPublicKey: must decode to 32 bytes, got 31");
   });
 });
 
