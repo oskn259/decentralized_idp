@@ -13,6 +13,10 @@
     "request": {
       "type": "object",
       "properties": {
+        "clientAssertion": {
+          "type": "string",
+          "minLength": 1
+        },
         "grant": {
           "type": "string",
           "enum": [
@@ -120,6 +124,7 @@
         }
       },
       "required": [
+        "clientAssertion",
         "grant",
         "dpopProof",
         "claims",

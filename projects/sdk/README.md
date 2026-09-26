@@ -11,6 +11,7 @@
 | `frost` | FROST 閾値署名: ラウンド1（`generateNonces`）、ラウンド2（`computeSignatureShare`）、集約（`computeGroupCommitment`・`aggregateSignatureShares`）、検証 |
 | `toprf` | PASTA の閾値OPRF: `blind`→`evaluate`→`unblind`→`finalize` と、ノード鍵 `deriveServerKey` |
 | `aead` | ChaCha20-Poly1305 とセッションナンスからの AEAD ナンス導出 |
+| `x402` | 前払いクレジット: 402 の要求（`paymentRequired`）、支払いの検証と決済（`evmSettler`）、入場と減算（`admit`・`charge`） |
 | `register` | 登録: ブラウザが TOPRF 鍵を引いて分割し、ノードごとの `k_i` と `h_i` を作る `createUserShares` |
 | `jwt` | 決定的 JSON 直列化、署名入力、JWT のデコードと EdDSA 検証 |
 | `tokens` | アサーション・アクセストークン・リフレッシュトークンのヘッダとペイロードの組み立て、クレデンシャルからの identity 読み出し |

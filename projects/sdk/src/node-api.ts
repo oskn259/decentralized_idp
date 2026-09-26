@@ -122,6 +122,8 @@ export const signRequest = z.object({
   refreshRoundId: text,
   request: z
     .object({
+      /** `private_key_jwt` assertion of the gateway (RFC 7523): the caller the node charges. */
+      clientAssertion: text,
       grant,
       assertion: z.string().optional(),
       refreshToken: z.string().optional(),
