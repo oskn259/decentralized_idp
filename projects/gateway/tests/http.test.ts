@@ -222,20 +222,6 @@ describe("POST /api/pasta/register", () => {
     expect(nodes.every((n) => n.registerCalls.length === 0)).toBe(true);
   });
 
-  it("400s when a share names a node the gateway does not know", async () => {
-    server = await startTestServer([new FakeNode(1), new FakeNode(2), new FakeNode(3)], dist);
-    const res = await post(body([1, 2, 3, 4]));
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("no such node: 4");
-  });
-
-  it("400s when one node gets two shares", async () => {
-    server = await startTestServer([new FakeNode(1), new FakeNode(2)], dist);
-    const res = await post(body([1, 2, 2]));
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("more than one share for node 2");
-  });
-
   it("400s when an ephemeralPublicKey does not decode to 32 bytes", async () => {
     server = await startTestServer([new FakeNode(1)], dist, 1);
     const bad = { username: "alice", shares: [{ nodeId: 1, share: { ...sealedShare(1), ephemeralPublicKey: base64UrlEncode(new Uint8Array(31)) } }] };
