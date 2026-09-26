@@ -98,19 +98,19 @@ sequenceDiagram
     participant GF as Gateway(front)
     participant GB as Gateway(backend)
     participant N as ノード × 3
-    RP->>GF: ログイン画面へリダイレクト
+    RP->>RP: DPoP keyを作成
+    RP->>GF: ログイン画面へリダイレクト（DPoP keyのサムプリントを添える）
     GF->>GB: Masked password(TOPRF)
     GB->>N: 中継
     N-->>GB: 暗号化された署名の断片
-    GB->>RP: 中継
+    GB-->>GF: 中継
     GF->>GF: パスワードをもとに署名片を復号
     GF->>RP: 断片から復元した署名をauth_codeとして返送
-    RP->>RP: DPoP keyを作成
     RP->>GB: auth_code, DPoP proofを送付してトークンを要求（with x402 payment）
     GB->>N: 中継（with x402 payment）
     N->>GB: auth_code検証、アクセストークン断片とリフレッシュトークン断片を作成
-    GB->>RP: 中継
-    RP-->>RP: 断片を復元し、DPoP keyにbindされたアクセストークン/リフレッシュトークンを取得
+    GB->>GB: 断片を合成
+    GB-->>RP: DPoP keyにbindされたアクセストークン/リフレッシュトークン
 ```
 
 **アクセストークンのリフレッシュフロー**
@@ -125,8 +125,8 @@ sequenceDiagram
     GB->>N: 中継（with x402 payment）
     N->>N: refresh_tokenの署名・有効期限・DPoP proofを検証
     N->>GB: アクセストークン断片とリフレッシュトークン断片を作成
-    GB->>RP: 中継
-    RP-->>RP: 断片を復元し、同じDPoP keyにbindされた新しいアクセストークン/リフレッシュトークンを取得
+    GB->>GB: 断片を合成
+    GB-->>RP: 同じDPoP keyにbindされた新しいアクセストークン/リフレッシュトークン
 ```
 
 RPは従来のIdPと連携するかのように、本IdPのログインボタンを配置する。
@@ -134,7 +134,8 @@ RPは従来のIdPと連携するかのように、本IdPのログインボタン
 その後はブラウザがRPへと遷移してログインが完了となり、従来のOAuthと全く同じ体感で使用できる。
 またリフレッシュに関してもOAuthと同様、RPがユーザーの操作を介さずIdPと通信して完結できるようになっている。
 従来と異なるのは内部処理で、パスワードはハッシュの称号ではなくTOPRFによる秘密値の導出で行われ、アクセストークン発行は閾値署名で行われる。
-この際、通信のハブとなっているGatewayは与えられた情報の中継しかできず、Gatewayのみの意思ではアクセストークンを勝手に発行することは不可能になっている。
+この際、通信のハブとなっているGatewayは与えられた情報の中継と断片の合成しかできず、Gatewayのみの意思ではアクセストークンを勝手に発行することは不可能になっている。
+RPが受け取るのは合成済みのトークンであり、RPは断片やその合成を知らない通常のOAuthクライアントでよい。
 またノード単体の意思でも同様にアクセストークンは生成できないようになっている。
 
 ただしGatewayには一つ注意点があり、ログイン画面として配信しているjsファイルを改竄されるとパスワードを取得されるおそれがある。
