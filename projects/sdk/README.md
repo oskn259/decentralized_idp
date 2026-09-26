@@ -33,5 +33,5 @@ npm run protocol:generate   # scripts/generate-protocol.ts が ../protocol/schem
 npm run build      # 使う側は dist/ を読むので、変更後はビルドする
 npm run typecheck
 npm test
-npm run qa-gate    # typecheck + build + カバレッジ付きテスト
+npm run qa-gate    # typecheck + build + テスト
 ```

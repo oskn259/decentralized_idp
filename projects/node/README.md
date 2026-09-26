@@ -124,7 +124,7 @@ sequenceDiagram
 ```bash
 npm test          # ../sdk をビルドしてから vitest
 npm run typecheck
-npm run qa-gate    # typecheck + build + カバレッジ付きテスト
+npm run qa-gate    # typecheck + build + テスト
 ```
 
 ```bash
