@@ -1,23 +1,35 @@
 import { Context } from "hono";
 import { z } from "zod";
 import { Gateway } from "../../domain/usecase/gateway.js";
-import { OAuthError, issueTokens } from "../../domain/usecase/issue-tokens.js";
+import { issueTokens } from "../../domain/usecase/issue-tokens.js";
+import { OAuthError } from "../../domain/usecase/oauth-error.js";
 import { DemoLog, excludedPhrase, shortValue } from "../demo-log.js";
 
+const JWT_BEARER = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
+
 /**
- * `POST /token` form (RFC 6749), `application/x-www-form-urlencoded`:
- *   grant_type=authorization_code&code=<assertion>
- *   grant_type=refresh_token&refresh_token=<jwt>
+ * `POST /token` form (RFC 6749), `application/x-www-form-urlencoded`, with the client
+ * authenticated by `private_key_jwt` (RFC 7523 §2.2):
+ *   grant_type=authorization_code&code=<assertion>&client_assertion_type=<JWT_BEARER>&client_assertion=<jwt>
+ *   grant_type=refresh_token&refresh_token=<jwt>&client_assertion_type=<JWT_BEARER>&client_assertion=<jwt>
  */
 export const tokenForm = z
   .object({
     grant_type: z.enum(["authorization_code", "refresh_token"], "must be authorization_code or refresh_token"),
     code: z.string().optional(),
     refresh_token: z.string().optional(),
+    client_id: z.string().optional(),
+    client_assertion_type: z.literal(JWT_BEARER, `must be ${JWT_BEARER}`),
+    client_assertion: z.string("is required").min(1, "is required"),
   })
   .refine((f) => (f.grant_type === "authorization_code" ? !!f.code : !!f.refresh_token), {
     message: "code (authorization_code) or refresh_token (refresh_token) is required",
   });
+
+/** RFC 6749 §5.2: missing or malformed client authentication is `invalid_client`. */
+export function tokenFormError(field: string): string {
+  return field.startsWith("client_assertion") ? "invalid_client" : "invalid_request";
+}
 
 /**
  * The DPoP proof (RFC 9449) travels in the `DPoP` header.
@@ -37,12 +49,18 @@ export async function tokenEndpoint(gateway: Gateway, form: z.infer<typeof token
     if (!proof) {
       throw new OAuthError("invalid_dpop_proof", "a DPoP header is required");
     }
-    const issued = await issueTokens(gateway, { grant, credential, dpopProof: proof });
+    const issued = await issueTokens(gateway, {
+      grant,
+      credential,
+      dpopProof: proof,
+      clientAssertion: form.client_assertion,
+      clientId: form.client_id,
+    });
 
     const authz = grant === "authorization_code";
     demo.event(
       "token",
-      `grant=${authz ? "authz" : "refresh"}  ← ${authz ? "code(assertion)" : "refresh_token"} ${shortValue(credential)} + DPoP ✓` +
+      `grant=${authz ? "authz" : "refresh"} client=${issued.clientId}  ← ${authz ? "code(assertion)" : "refresh_token"} ${shortValue(credential)} + DPoP ✓` +
         `${excludedPhrase(issued.excluded)}  → 2×/commit ×${issued.participants.length} → /sign → ` +
         `access_token ${issued.accessToken.slice(0, 16)} (cnf.jkt=${shortValue(issued.cnfJkt)}) + refresh_token`
     );

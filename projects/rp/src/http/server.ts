@@ -8,8 +8,9 @@ import * as oauth from "openid-client";
 
 /**
  * A relying party built from ordinary OAuth client libraries only: `openid-client` for the
- * authorization code flow with DPoP (RFC 9449), `jose` to verify the access token against
- * the gateway's JWKS. Nothing here knows about PASTA, FROST or the nodes.
+ * authorization code flow with DPoP (RFC 9449) and private_key_jwt client authentication
+ * (RFC 7523), `jose` to verify the access token against the gateway's JWKS. Nothing here
+ * knows about PASTA, FROST or the nodes.
  */
 
 export interface RpOptions {
@@ -18,6 +19,8 @@ export interface RpOptions {
   /** This relying party's own public URL: the base of `redirect_uri`. */
   rpUrl: string;
   clientId: string;
+  /** Signs the `client_assertion` that authenticates this client at the token endpoint (private_key_jwt). */
+  clientKey: { key: CryptoKey; kid?: string };
   scope: string;
 }
 
@@ -37,7 +40,7 @@ interface Session {
  */
 export async function createRpApp(options: RpOptions): Promise<Hono> {
   // RFC 8414 metadata. `allowInsecureRequests` only matters for the plain-http demo issuer.
-  const config = await oauth.discovery(new URL(options.gatewayUrl), options.clientId, undefined, oauth.None(), {
+  const config = await oauth.discovery(new URL(options.gatewayUrl), options.clientId, undefined, oauth.PrivateKeyJwt(options.clientKey), {
     algorithm: "oauth2",
     execute: options.gatewayUrl.startsWith("http:") ? [oauth.allowInsecureRequests] : [],
   });

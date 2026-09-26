@@ -26,14 +26,15 @@ export async function requireJson(c: Context, next: () => Promise<void>): Promis
   await next();
 }
 
-/** Validator hook answering `400 { error: "invalid_request", error_description }` (OAuth endpoints). */
-export function invalidRequest(demo: DemoLog, event: string) {
+/** Validator hook answering `400 { error, error_description }` (OAuth endpoints); `errorOf` picks the code from the failing field. */
+export function oauthRefusal(demo: DemoLog, event: string, errorOf: (field: string) => string) {
   return (result: Validated, c: Context): Response | undefined => {
     if (result.success) return undefined;
     const problem = problemOf(result.error);
-    demo.reject(event, problem);
+    const error = errorOf(result.error.issues[0].path.join("."));
+    demo.reject(event, `${error}: ${problem}`);
     c.header("Cache-Control", "no-store");
-    return c.json({ error: "invalid_request", error_description: problem }, 400);
+    return c.json({ error, error_description: problem }, 400);
   };
 }
 

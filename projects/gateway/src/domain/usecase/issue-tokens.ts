@@ -4,7 +4,9 @@ import { Jwt, assembleJwt, createSigningInput, decodeJwt } from "@decentralized-
 import { Grant } from "@decentralized-idp/sdk/node-api";
 import { CredentialClaims, accessTokenJwt, credentialClaimsOf, refreshTokenJwt } from "@decentralized-idp/sdk/tokens";
 import { tokenEndpointUrl } from "../value/group.js";
+import { authenticateClient } from "./client-auth.js";
 import { Gateway, openRounds, participantNodes } from "./gateway.js";
+import { OAuthError } from "./oauth-error.js";
 
 export const ACCESS_TOKEN_LIFETIME_SECONDS = 3600;
 export const REFRESH_TOKEN_LIFETIME_SECONDS = 86400 * 30;
@@ -17,6 +19,10 @@ export interface TokenRequest {
   credential: string;
   /** RFC 9449 proof for `POST <issuer>/token`. */
   dpopProof: string;
+  /** RFC 7523 `private_key_jwt` assertion authenticating the client. */
+  clientAssertion: string;
+  /** The form's `client_id`, when the client sent one. */
+  clientId?: string | undefined;
 }
 
 export interface IssuedTokens {
@@ -24,32 +30,31 @@ export interface IssuedTokens {
   refreshToken: string;
   expiresIn: number;
   scope: string;
+  clientId: string;
   cnfJkt: string;
   participants: number[];
   excluded: number[];
 }
 
-/** A `/token` refusal, with its RFC 6749 error code. */
-export class OAuthError extends Error {
-  constructor(
-    readonly code: "invalid_request" | "invalid_grant" | "invalid_dpop_proof",
-    message: string
-  ) {
-    super(message);
-  }
-}
-
 /**
  * Turns a credential plus a DPoP proof into an access token and the next refresh token.
  *
- * The gateway reads the credential without verifying it (the nodes do that, each for
+ * The client must authenticate, and the credential must have been issued to it. The
+ * gateway reads the credential without verifying it (the nodes do that, each for
  * itself) and checks only that the proof's key is the one the credential is bound to. It
  * then pins the moment of issue, runs two FROST rounds, and adds up the plaintext shares
  * into two group signatures. It keeps nothing: the refresh token is itself group-signed.
  */
 export async function issueTokens(gateway: Gateway, request: TokenRequest): Promise<IssuedTokens> {
   const { group } = gateway;
+  const clientId = authenticateClient(gateway, request.clientAssertion);
+  if (request.clientId !== undefined && request.clientId !== clientId) {
+    throw new OAuthError("invalid_client", `client_id ${request.clientId} does not match the client assertion`);
+  }
   const claims = readClaims(request.credential);
+  if (claims.client_id !== clientId) {
+    throw new OAuthError("invalid_grant", "credential was issued to another client");
+  }
   const now = gateway.clock.nowSeconds();
   verifyProof(request.dpopProof, tokenEndpointUrl(group), claims.cnf.jkt, now);
 
@@ -88,6 +93,7 @@ export async function issueTokens(gateway: Gateway, request: TokenRequest): Prom
     refreshToken: aggregate(refreshTokenJwt(group, claims, now, refreshExp), refreshCommitments, shares.map((s) => s.refreshShare)),
     expiresIn: ACCESS_TOKEN_LIFETIME_SECONDS,
     scope: claims.scope,
+    clientId,
     cnfJkt: claims.cnf.jkt,
     participants: rounds.participants,
     excluded: rounds.excluded,
