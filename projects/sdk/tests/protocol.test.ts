@@ -12,6 +12,7 @@ import { aggregateSignatureShares, computeGroupCommitment, verifySignature } fro
 import { bigIntToHex, hexToBigInt, hexToBytes } from "../src/hex.js";
 import { deterministicJsonStringify } from "../src/jwt.js";
 import { scalar } from "../src/node-api.js";
+import { openUserShare } from "../src/register.js";
 import { combineShares, lagrangeCoefficient } from "../src/shamir.js";
 import { deriveServerKey, finalize, unblind } from "../src/toprf.js";
 
@@ -119,6 +120,16 @@ describe("the sdk accepts the committed vectors", () => {
     const plain = aeadDecrypt(base64UrlDecode(v.key), nonce, base64UrlDecode(v.ciphertext), base64UrlDecode(v.aad));
     expect(plain).toEqual(base64UrlDecode(v.plaintext));
     expect(plain).toEqual(utf8(v.plaintextUtf8));
+  });
+
+  it("seal: the node opens its share under the AAD of its id and the username", () => {
+    const v = readJson("vectors/seal.json");
+    const box = { ephemeralPublicKey: base64UrlDecode(v.ephemeralPublicKey), ciphertext: base64UrlDecode(v.ciphertext) };
+    const share = openUserShare(base64UrlDecode(v.nodeSecretKey), box, v.nodeId, v.username);
+    expect(bigIntToHex(share.toprfKeyShare.value)).toBe(readJson("vectors/toprf.json").shares[0].k_i);
+    expect(base64UrlEncode(share.h_i)).toBe(readJson("vectors/toprf.json").serverKeys[0].h_i);
+    expect(() => openUserShare(base64UrlDecode(v.nodeSecretKey), box, 2, v.username)).toThrow();
+    expect(() => openUserShare(base64UrlDecode(v.nodeSecretKey), box, v.nodeId, "bob")).toThrow();
   });
 
   it("DPoP: the thumbprint and the proof are accepted", () => {

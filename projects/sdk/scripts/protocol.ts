@@ -18,7 +18,9 @@ import {
 import { bigIntToHex, bytesToHex, hexToBigInt } from "../src/hex.js";
 import { Jwt, assembleJwt, createSigningInput, deterministicJsonStringify } from "../src/jwt.js";
 import * as api from "../src/node-api.js";
+import { sealUserShare } from "../src/register.js";
 import { mod, scalarFromBytesLE } from "../src/scalar.js";
+import { sealingPublicKeyOf } from "../src/seal.js";
 import { combineShares, lagrangeCoefficient } from "../src/shamir.js";
 import { accessTokenJwt, assertionJwt, refreshTokenJwt } from "../src/tokens.js";
 import { deriveServerKey, evaluate, finalize, hashToGroup, unblind } from "../src/toprf.js";
@@ -42,6 +44,8 @@ export function generateProtocolFiles(): ProtocolFiles {
 
 const bodies = {
   "health.response": api.healthResponse,
+  "register.request": api.registerRequest,
+  "register.response": api.registerResponse,
   "commit.request": api.commitRequest,
   "commit.response": api.commitResponse,
   "sign-on.request": api.signOnRequest,
@@ -74,6 +78,7 @@ export function generateVectors(): ProtocolFiles {
     "vectors/frost.json": frost,
     "vectors/toprf.json": toprf,
     "vectors/aead.json": aead,
+    "vectors/seal.json": sealVectors(toprf),
     "vectors/dpop.json": dpopVectors(),
   };
 }
@@ -266,6 +271,27 @@ function aeadVectors(signingInput: string, h_1: Uint8Array, z_1: bigint) {
     plaintextUtf8: new TextDecoder().decode(plaintext),
     plaintext: base64UrlEncode(plaintext),
     ciphertext: base64UrlEncode(aeadEncrypt(h_1, nonce, plaintext, aad)),
+  };
+}
+
+/** Node 1's share of the TOPRF vector's user, sealed to node 1 as the browser does at registration. */
+function sealVectors(toprf: ReturnType<typeof toprfVectors>) {
+  const nodeId = 1;
+  const username = "alice";
+  const nodeSecretKey = fixedBytes("seal node 1 secret key", 32);
+  const ephemeralSecretKey = fixedBytes("seal ephemeral secret key", 32);
+  const share = { nodeId, toprfKeyShare: { id: nodeId, value: hexToBigInt(toprf.shares[0].k_i) }, h_i: base64UrlDecode(toprf.serverKeys[0].h_i) };
+  const box = sealUserShare(share, username, sealingPublicKeyOf(nodeSecretKey), ephemeralSecretKey);
+  return {
+    nodeId,
+    username,
+    nodeSecretKey: base64UrlEncode(nodeSecretKey),
+    nodePublicKey: base64UrlEncode(sealingPublicKeyOf(nodeSecretKey)),
+    ephemeralSecretKey: base64UrlEncode(ephemeralSecretKey),
+    plaintextUtf8: deterministicJsonStringify({ h_i: bytesToHex(share.h_i), k_i: toprf.shares[0].k_i }),
+    aadUtf8: deterministicJsonStringify({ nodeId, username }),
+    ephemeralPublicKey: base64UrlEncode(box.ephemeralPublicKey),
+    ciphertext: base64UrlEncode(box.ciphertext),
   };
 }
 

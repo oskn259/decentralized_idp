@@ -1,28 +1,9 @@
 {
-  "version": 1,
+  "version": 2,
   "nodeId": 1,
   "threshold": 2,
   "total": 3,
-  "groupPublicKey": "a665f43f13ae9652f8004b9cfbc9bdd2c6fe086e659eb2797e54851f8d21f80a",
-  "secretKeyShare": "0a22cb4e216f70008418a0a9eab93572d397e4192135b8cc5a55c4d21054bfd9",
-  "users": [
-    {
-      "username": "alice",
-      "sub": "usr_alice_12345",
-      "toprfKeyShare": {
-        "id": 1,
-        "value": "06a546d789c2bb1b3d0e7946a650cf5e8bd7bc8dbd0bff9ac93ada1167d366b0"
-      },
-      "h_i": "b933b6ffabe66d6958eb37d336eb82090740aa5966e6ce31e258864c1a5d26d9"
-    },
-    {
-      "username": "bob",
-      "sub": "usr_bob_67890",
-      "toprfKeyShare": {
-        "id": 1,
-        "value": "0c330b8d61436e7619f74b2f5b4a72afb337a8e2752aaceddca7f826c26d31ed"
-      },
-      "h_i": "ea41ccef99612558832bd9c14520cd02f65d58939b63ddbc635ebdadebb2558c"
-    }
-  ]
+  "groupPublicKey": "cd7bbb94c9af745b3fd6128cb1d7fd22a82e48fc82f5eb08538dcaeddbb739f4",
+  "secretKeyShare": "00b3b3555f9551f1987fc14b2722182ce632875f8d7a0e86eac53175add91e5f",
+  "sealingSecretKey": "3e1f1c559250b187f5287419a5be3c96782d2775a5d82fdbc0206625fcedc060"
 }

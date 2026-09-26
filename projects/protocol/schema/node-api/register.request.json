@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "username": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sub": {
+      "type": "string",
+      "minLength": 1
+    },
+    "share": {
+      "type": "object",
+      "properties": {
+        "ephemeralPublicKey": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "ciphertext": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        }
+      },
+      "required": [
+        "ephemeralPublicKey",
+        "ciphertext"
+      ]
+    }
+  },
+  "required": [
+    "username",
+    "sub",
+    "share"
+  ]
+}

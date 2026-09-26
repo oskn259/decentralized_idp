@@ -50,18 +50,13 @@ function nodeFile(keys: DistributedKeys, node: NodeKeys): OutputFile {
   return {
     name: nodeFileName(node.nodeId),
     content: json({
-      version: 1,
+      version: 2,
       nodeId: node.nodeId,
       threshold: keys.threshold,
       total: keys.total,
       groupPublicKey: bytesToHex(keys.groupPublicKey),
       secretKeyShare: bigIntToHex(node.secretKeyShare),
-      users: node.users.map((user) => ({
-        username: user.username,
-        sub: user.sub,
-        toprfKeyShare: { id: user.toprfKeyShare.id, value: bigIntToHex(user.toprfKeyShare.value) },
-        h_i: bytesToHex(user.h_i),
-      })),
+      sealingSecretKey: bytesToHex(node.sealingKeyPair.secretKey),
     }),
   };
 }

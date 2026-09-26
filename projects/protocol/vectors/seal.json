@@ -1,0 +1,11 @@
+{
+  "nodeId": 1,
+  "username": "alice",
+  "nodeSecretKey": "p4Wm3GZjcFBbO3FuPabfWhJSorOouR8M18YEepq8gVM",
+  "nodePublicKey": "fzd5troxxzxUBSWRYn5hLeS863F83lcTrUsflryHnnU",
+  "ephemeralSecretKey": "VUyMism6llxXw3zSewiRuGxyMiA1ZW2a7QIC_wRzWuE",
+  "plaintextUtf8": "{\"h_i\":\"814be47ea2430e76a8a4aece08b82dae1795ec1ae6d1dc2df58b4afc2d0a63bb\",\"k_i\":\"050e8b70bb53af3a08a957340d44c15fc9ae84293764532d9fa10ff48a7b56af\"}",
+  "aadUtf8": "{\"nodeId\":1,\"username\":\"alice\"}",
+  "ephemeralPublicKey": "knbU7rJ0urcSDUe8VHKRM1d5-8hTnqFw3VQEzjDahkM",
+  "ciphertext": "KfwATiZEmkVlxUXpA9ceavmJyTgn_VA6LWSDsEMAtac4tN3zU3eO-72Vl2wQ0Un8leRNUIsl0I-K4MT6d-CAuIQWxIy3wR206lGJYmxXCWQjAqShgus-7Ao591BUy8u_OEkFIjR3wMhOrHFb5i9SAfgO2tjbFrvA_PNa76QWJOtuOnk5152a_8bbxmRsISEiNW-zo776J1VLPyr6N2SfnIkwTg"
+}

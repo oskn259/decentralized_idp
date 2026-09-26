@@ -57,7 +57,21 @@ export type Grant = z.infer<typeof grant>;
 
 // ---- GET /health ------------------------------------------------------------------
 
-export const healthResponse = z.object({ status: z.literal("ok"), nodeId, groupPublicKey: bytes(32) });
+export const healthResponse = z.object({
+  status: z.literal("ok"),
+  nodeId,
+  groupPublicKey: bytes(32),
+  /** X25519 key the browser seals this node's share of a new user to. */
+  sealingPublicKey: bytes(32),
+});
+
+// ---- POST /register: one user's share for this node ---------------------------------------
+
+/** `{ k_i, h_i }` sealed to this node (`seal.ts`), under the AAD `register.ts` defines. */
+export const sealedBox = z.object({ ephemeralPublicKey: bytes(32), ciphertext: bytes() });
+
+export const registerRequest = z.object({ username: text, sub: text, share: sealedBox });
+export const registerResponse = z.object({ nodeId });
 
 // ---- POST /commit: FROST round 1 ------------------------------------------------------
 
@@ -124,6 +138,10 @@ export const signResponse = z.object({ nodeId, at: scalar, rt: scalar });
 
 export type HealthResponse = z.output<typeof healthResponse>;
 export type HealthResponseWire = z.input<typeof healthResponse>;
+export type RegisterRequest = z.output<typeof registerRequest>;
+export type RegisterRequestWire = z.input<typeof registerRequest>;
+export type RegisterResponse = z.output<typeof registerResponse>;
+export type RegisterResponseWire = z.input<typeof registerResponse>;
 export type CommitRequest = z.output<typeof commitRequest>;
 export type CommitRequestWire = z.input<typeof commitRequest>;
 export type CommitResponse = z.output<typeof commitResponse>;

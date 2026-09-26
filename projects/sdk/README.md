@@ -11,6 +11,8 @@
 | `frost` | FROST 閾値署名: ラウンド1（`generateNonces`）、ラウンド2（`computeSignatureShare`）、集約（`computeGroupCommitment`・`aggregateSignatureShares`）、検証 |
 | `toprf` | PASTA の閾値OPRF: `blind`→`evaluate`→`unblind`→`finalize` と、ノード鍵 `deriveServerKey` |
 | `aead` | ChaCha20-Poly1305 とセッションナンスからの AEAD ナンス導出 |
+| `seal` | X25519 + HKDF-SHA256 + ChaCha20-Poly1305 の封印箱: 受け手だけが開ける |
+| `register` | 登録: ブラウザ側の `createUserShares`・`sealUserShare`、ノード側の `openUserShare` |
 | `jwt` | 決定的 JSON 直列化、署名入力、JWT のデコードと EdDSA 検証 |
 | `tokens` | アサーション・アクセストークン・リフレッシュトークンのヘッダとペイロードの組み立て、クレデンシャルからの identity 読み出し |
 | `dpop` | RFC 9449: 鍵生成、RFC 7638 サムプリント、プルーフの生成と検証 |
