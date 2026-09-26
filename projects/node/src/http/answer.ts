@@ -1,10 +1,10 @@
 import { Context } from "hono";
-import { UsernameTakenError } from "../domain/repository/user-repository.js";
+import { AlreadyRegisteredError } from "../domain/repository/user-repository.js";
 import { DemoLog } from "./demo-log.js";
 
 /**
  * Answers an endpoint's result as JSON. A refusal it throws becomes `{ error }`, noted in the
- * demo log: 409 for a taken username, 400 for everything else.
+ * demo log: 409 for a taken username or sub, 400 for everything else.
  */
 export function answer(c: Context, demo: DemoLog, event: string, run: () => unknown): Response {
   try {
@@ -12,6 +12,6 @@ export function answer(c: Context, demo: DemoLog, event: string, run: () => unkn
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     demo.reject(event, message);
-    return c.json({ error: message }, err instanceof UsernameTakenError ? 409 : 400);
+    return c.json({ error: message }, err instanceof AlreadyRegisteredError ? 409 : 400);
   }
 }

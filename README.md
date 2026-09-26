@@ -6,7 +6,7 @@
 ブラウザ ──→ rp ──→ gateway ──→ node1 / node2 / node3
 ```
 
-- **ブラウザ**でパスワードはブラインドされ、ノードが返す暗号化された署名シェアを復号・合成して**認証アサーション**（= 認可コード）を組み立てる。復号できるのはパスワードを知る者だけ。登録もブラウザが行い、ユーザーごとの TOPRF 鍵を作って分割し、ノードごとに封印して送る
+- **ブラウザ**でパスワードはブラインドされ、ノードが返す暗号化された署名シェアを復号・合成して**認証アサーション**（= 認可コード）を組み立てる。復号できるのはパスワードを知る者だけ。登録もブラウザが行い、ユーザーごとの TOPRF 鍵を作って分割し、各ノードに直接渡す
 - **gateway** は状態を一切持たない OAuth サーバー。ノードへの中継とシェアの合成だけを行い、シェアの復号も単独署名もできない
 - **node** はグループ署名鍵のシェア `s_i` と、登録で受け取ったユーザーごとの TOPRF シェア `k_i` を持つ。パスワードもトークンも見ない
 - **rp** は DPoP 鍵を持ち、認可コードをその鍵に束縛されたアクセストークンに交換する
@@ -19,7 +19,7 @@
 |---|---|
 | [`projects/protocol`](projects/protocol) | 規範。ノード API の JSON Schema、テストベクタ、符号化・時間・トークンの規則。コードなし |
 | [`projects/sdk`](projects/sdk) | protocol の TypeScript 実装（`@decentralized-idp/sdk`）。全コンポーネントが使う |
-| [`projects/distKey`](projects/distKey) | 起動前に一度だけ走る trusted dealer。グループ署名鍵を分割し、ノードごとの封印用鍵と合わせて `secrets/` に書く |
+| [`projects/distKey`](projects/distKey) | 起動前に一度だけ走る trusted dealer。グループ署名鍵を分割して `secrets/` に書く |
 | [`projects/node`](projects/node) | アイデンティティノード。`/register` `/commit` `/sign-on` `/sign` |
 | [`projects/gateway`](projects/gateway) | OAuth 認可サーバー。`/authorize` `/token` `/jwks.json` とログインページの配信 |
 | [`projects/idpFront`](projects/idpFront) | ログインページ（gateway が配信） |
@@ -70,7 +70,7 @@ sequenceDiagram
 - アサーションは 30 秒だけ有効。リプレイで得られるトークンも同じ DPoP 鍵に束縛されるので、鍵を持たない者には使えない
 - リフレッシュトークンもノードのグループ署名付き JWT。gateway はどのトークンも保持しない
 - ノードが 1 台落ちても t=2 で続く。2 台落ちると `quorum 1 < 2` で拒否される
-- 登録はログイン画面の「Create account」から。ブラウザが TOPRF 鍵 k を引いて t-of-n に分割し、`k_i` と `h_i` をノード i の X25519 鍵に封印して `POST /api/pasta/register` に送る。gateway は `sub` を採番して各ノードの `/register` に中継し、n 台全部が受理したら完了。gateway は封印を開けない。ノードは受け取った記録を自分の `/data` に保存する
+- 登録はログイン画面の「Create account」から。ブラウザが `sub` を採番し、TOPRF 鍵 k を引いて t-of-n に分割し、`k_i` と `h_i` をノード i の `/register` に直接送る（PASTA と同じ）。n 台全部が受理したら完了。gateway は `GET /api/pasta/nodes` でノードの URL を教えるだけで、登録を見ない。ノードは username と `sub` の一意性を検査し、記録を自分の `/data` に保存する。compose ではノードを `localhost:4001..4003` に公開している
 
 ## 開発
 

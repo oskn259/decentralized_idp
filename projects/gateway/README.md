@@ -15,7 +15,6 @@ RP（relying party）とブラウザが直接話す相手であり、n台ある�
 - `domain/infra/node.ts`: ノードとの通信のインターフェース（`Node`）とその要求・応答の型
 - `domain/usecase`: domainの外に提供する機能
   - `gateway.ts` の `openRounds`: 全ノードにFROSTラウンドを開かせ、閾値を満たすかを見る
-  - `register.ts` の `register`: 登録を中継する。`sub`を採番し、封印されたシェアを各ノードへ渡す
   - `sign-on.ts` の `signOn`: サインオンの2ラウンドを中継する
   - `issue-tokens.ts` の `issueTokens`: クレデンシャルとDPoPプルーフからアクセストークンとリフレッシュトークンを組み立てる
 - `infra`: `domain/infra` の実装
@@ -72,8 +71,7 @@ RP から見ると RFC 6749 の認可コードフロー + RFC 9449 DPoP + RFC 90
 | GET | `/.well-known/oauth-authorization-server` | OAuth のメタデータ（RFC 8414）。OpenID Connect ではないので id_token はない |
 | GET | `/jwks.json` | グループ公開鍵（CORS: `RP_ORIGIN`） |
 | GET | `/authorize` | 認可リクエストを受け、ログインページへ302 |
-| GET | `/api/pasta/nodes` | 閾値と、各ノードの封印用公開鍵 |
-| POST | `/api/pasta/register` | ログインページからの登録の中継 |
+| GET | `/api/pasta/nodes` | 閾値と、ブラウザから各ノードへ届く URL |
 | POST | `/api/pasta/sign-on` | ログインページからのサインオンの中継 |
 | POST | `/token` | 認可コードまたはリフレッシュトークンをアクセストークンに交換 |
 | GET | `/`, `/login`, `/assets/*` | ログインUIの静的配信 |
@@ -89,13 +87,7 @@ GET /authorize?client_id=...&redirect_uri=...&response_type=code&scope=...&dpop_
 → 400 { "error": "invalid_request", "error_description": "<field>: <理由>" }        # redirect_uri が無い・不正なとき
 
 GET /api/pasta/nodes
-→ 200 { "threshold", "total", "nodes": [{ "nodeId", "sealingPublicKey": "<base64url 32byte>" }] }   # nodeId 昇順
-
-POST /api/pasta/register
-{ "username", "shares": [{ "nodeId", "share": { "ephemeralPublicKey": "<base64url 32byte>", "ciphertext": "<base64url>" } }] }
-→ 200 { "sub" }
-→ 409 { "error": string }   # いずれかのノードで username がすでにある
-→ 400 { "error": string }   # シェアの過不足、ノードの拒否、ボディの不正
+→ 200 { "threshold", "total", "nodes": [{ "nodeId", "url" }] }   # nodeId 昇順。url は各ノードの /health の publicUrl
 
 POST /api/pasta/sign-on
 { "username", "blinded": "<base64url 32byte>", "sessionNonce": "<base64url>",
@@ -114,7 +106,7 @@ Cache-Control: no-store （成功・失敗とも）
 
 ## 登録
 
-ブラウザはノードごとに1つ、そのノードの封印用公開鍵に封印したシェアを送る。ゲートウェイは全ノードちょうど1つずつあることを確かめ、`sub`（UUID）を採番し、各シェアをそのノードの`/register`へ渡す。全ノードが受け入れたときだけ成功で、1台でも拒否すればその拒否が応答になる。ゲートウェイは封印を開けず（封印用の秘密鍵を持たない）、登録について何も保存しない。
+登録はブラウザから各ノードの`/register`へ直接送られる。ゲートウェイはノードのURLを公開するだけで、シェアを一切目にしない。
 
 ## 検証範囲とラウンドの規則
 
@@ -139,7 +131,6 @@ Cache-Control: no-store （成功・失敗とも）
 ```
 [gateway] ● up      t=2/3 issuer=http://localhost:3000   holds: group pubkey, kid=pasta-group-key-1   never: s_i, k_i, h_i, pw, sessions
 [gateway] authorize client_id=demo_client nonce=3d9dbfed-7e01-4d89-80c9-75443191a34b state=st dpop_jkt=VmE7pTg_  → redirect /login
-[gateway] register  user=alice sub=5b0c1e2a → /register ×3 sealed (cannot open) ✓
 [gateway] sign-on   round=fb3792a0 user=alice nonce=c-1  ← A AkmcCzoP  jkt VmE7pTg_  (no pw)
                     round1 (D,E)×2 (node3 unreachable, excluded) → round2 ← B_i×2 ct_i×2 (no h_i, cannot decrypt) → relayed as-is
 [gateway] token     grant=authz  ← code(assertion) eyJhbGci + DPoP ✓ (node3 unreachable, excluded)  → 2×/commit ×2 → /sign → access_token eyJhbGciOiJFZERT (cnf.jkt=VmE7pTg_) + refresh_token

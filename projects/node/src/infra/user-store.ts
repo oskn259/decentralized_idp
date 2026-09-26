@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { User } from "../domain/entity/user.js";
-import { UserRepository, UsernameTakenError } from "../domain/repository/user-repository.js";
+import { AlreadyRegisteredError, UserRepository } from "../domain/repository/user-repository.js";
 import { bigIntToHex, bytesToHex, hexToBigInt, hexToBytes } from "@decentralized-idp/sdk/hex";
 
 /**
@@ -57,7 +57,10 @@ export class FileUserRepository implements UserRepository {
 
   insert(user: User): void {
     if (this.users.has(user.username)) {
-      throw new UsernameTakenError(user.username);
+      throw new AlreadyRegisteredError("username", user.username);
+    }
+    if ([...this.users.values()].some((known) => known.sub === user.sub)) {
+      throw new AlreadyRegisteredError("sub", user.sub);
     }
     writeUsers(this.path, [...this.users.values(), user]);
     this.users.set(user.username, user);

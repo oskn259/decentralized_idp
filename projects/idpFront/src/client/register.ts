@@ -1,5 +1,6 @@
-import { base64UrlDecode, base64UrlEncode } from "@decentralized-idp/sdk/base64url";
-import { UserShare, createUserShares, sealUserShare } from "@decentralized-idp/sdk/register";
+import { base64UrlEncode } from "@decentralized-idp/sdk/base64url";
+import { bigIntToHex } from "@decentralized-idp/sdk/hex";
+import { UserShare, createUserShares } from "@decentralized-idp/sdk/register";
 
 export interface RegisterRequest {
   /** Base URL of the gateway; `""` when the page is served by the gateway itself. */
@@ -10,51 +11,61 @@ export interface RegisterRequest {
   log?: (line: string) => void;
 }
 
-/** `GET /api/pasta/nodes`: the sealing keys registration needs, one per node. */
+/** `GET /api/pasta/nodes`: where to reach each node for registration. */
 interface NodesResponse {
   threshold: number;
   total: number;
-  nodes: SealingNode[];
+  nodes: RegistrationNode[];
 }
 
-interface SealingNode {
+interface RegistrationNode {
   nodeId: number;
-  /** X25519 public key, base64url. */
-  sealingPublicKey: string;
-}
-
-/** A sealed share on the wire, as `POST /api/pasta/register` expects it. */
-interface SealedShareWire {
-  nodeId: number;
-  share: { ephemeralPublicKey: string; ciphertext: string };
+  /** Where the browser reaches this node. */
+  url: string;
 }
 
 /**
- * The browser's half of registration: draws the user's TOPRF key `k`, splits it into one
- * share per node, and seals each node's share so only that node can open it. The gateway
- * relays the sealed boxes and the username; it never sees a share, `k`, or `h`.
+ * The browser's half of registration: chooses `sub`, draws the user's TOPRF key `k`, splits
+ * it into one share per node, and sends each node its own share directly over TLS. No sealing:
+ * the browser talks to every node itself, and the gateway never sees a share, `k`, `h`, or `sub`.
  */
 export async function register(request: RegisterRequest): Promise<string> {
   const log = request.log ?? (() => {});
   const { threshold, total, nodes } = await requestNodes(request);
   const shares = createUserShares(request.password, threshold, total);
+  const sub = crypto.randomUUID();
   log(
-    `[browser] register  user=${request.username}  → k, k_i×${shares.length}, h, h_i×${shares.length} (sealed per node, gateway cannot open)`
+    `[browser] register  user=${request.username} sub=${sub}  → k, k_i×${shares.length}, h, h_i×${shares.length}` +
+      `  → /register on each node directly (not via the gateway)`
   );
 
-  const sealedShares = nodes.map((node) => sealShareFor(node, shares, request.username));
-  const sub = await requestRegister(request, sealedShares, log);
-  log(`[browser]           ← sub ${sub}`);
+  await Promise.all(nodes.map((node) => registerWithNode(node, request.username, sub, shares)));
+  log(`[browser]           ← accepted ×${nodes.length}`);
   return sub;
 }
 
-function sealShareFor(node: SealingNode, shares: UserShare[], username: string): SealedShareWire {
+/** `POST <node url>/register`. A node's error text becomes the thrown error; an unreachable node becomes its own. */
+async function registerWithNode(node: RegistrationNode, username: string, sub: string, shares: UserShare[]): Promise<void> {
   const share = shares.find((s) => s.nodeId === node.nodeId);
   if (!share) {
     throw new Error(`no share drawn for node ${node.nodeId}`);
   }
-  const box = sealUserShare(share, username, base64UrlDecode(node.sealingPublicKey));
-  return { nodeId: node.nodeId, share: { ephemeralPublicKey: base64UrlEncode(box.ephemeralPublicKey), ciphertext: base64UrlEncode(box.ciphertext) } };
+  const body = { username, sub, toprfKeyShare: bigIntToHex(share.toprfKeyShare.value), h_i: base64UrlEncode(share.h_i) };
+
+  let res: Response;
+  try {
+    res = await fetch(`${node.url}/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error(`node ${node.nodeId} unreachable`);
+  }
+  if (!res.ok) {
+    const errorBody = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as { error: string };
+    throw new Error(errorBody.error);
+  }
 }
 
 /** `GET /api/pasta/nodes`. The gateway's error text becomes the thrown error. */
@@ -65,20 +76,4 @@ async function requestNodes(request: RegisterRequest): Promise<NodesResponse> {
     throw new Error(body.error);
   }
   return (await res.json()) as NodesResponse;
-}
-
-/** `POST /api/pasta/register`. The gateway's error text becomes the thrown error. */
-async function requestRegister(request: RegisterRequest, shares: SealedShareWire[], log: (line: string) => void): Promise<string> {
-  const res = await fetch(`${request.gatewayUrl}/api/pasta/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: request.username, shares }),
-  });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({ error: `HTTP ${res.status}` }))) as { error: string };
-    log(`[browser] ✖ register failed: ${body.error}`);
-    throw new Error(body.error);
-  }
-  const { sub } = (await res.json()) as { sub: string };
-  return sub;
 }

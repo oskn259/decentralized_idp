@@ -2,12 +2,10 @@ import { Commitment, generateNonces } from "@decentralized-idp/sdk/frost";
 import {
   Node,
   NodeHealth,
-  NodeRegisterRequest,
   NodeSignOnRequest,
   NodeSignOnResponse,
   NodeTokenRequest,
   NodeTokenShares,
-  UsernameTakenError,
 } from "../../src/domain/infra/node.js";
 
 /**
@@ -22,8 +20,6 @@ export interface FakeNodeOptions {
   signOnFails?: boolean | string;
   signFails?: boolean | string;
   healthFails?: boolean | string;
-  /** As above, and `"taken"` throws a `UsernameTakenError`. */
-  registerFails?: boolean | "taken" | string;
   sub?: string;
   groupPublicKey?: Uint8Array;
   /** Answers `commit` with bytes that are not valid Ed25519 curve points, instead of failing outright. */
@@ -31,26 +27,16 @@ export interface FakeNodeOptions {
 }
 
 export class FakeNode implements Node {
-  readonly registerCalls: NodeRegisterRequest[] = [];
   readonly commitCalls: string[] = [];
   readonly signOnCalls: NodeSignOnRequest[] = [];
   readonly signCalls: NodeTokenRequest[] = [];
 
-  readonly sealingPublicKey: Uint8Array;
-
   constructor(
     readonly nodeId: number,
     private readonly opts: FakeNodeOptions = {},
-    readonly url = `http://fake-node-${nodeId}.test`
-  ) {
-    this.sealingPublicKey = new Uint8Array(32).fill(nodeId);
-  }
-
-  async register(request: NodeRegisterRequest): Promise<void> {
-    this.registerCalls.push(request);
-    if (this.opts.registerFails === "taken") throw new UsernameTakenError(`node ${this.nodeId} /register 409: username taken`);
-    if (this.opts.registerFails) throw failure(this.opts.registerFails, `node ${this.nodeId} register failed`);
-  }
+    readonly url = `http://fake-node-${nodeId}.test`,
+    readonly publicUrl = `http://fake-node-${nodeId}.test`
+  ) {}
 
   async commit(roundId: string): Promise<Commitment> {
     this.commitCalls.push(roundId);
@@ -77,7 +63,7 @@ export class FakeNode implements Node {
     return {
       nodeId: this.nodeId,
       groupPublicKey: this.opts.groupPublicKey ?? new Uint8Array(32).fill(this.nodeId),
-      sealingPublicKey: this.sealingPublicKey,
+      publicUrl: this.publicUrl,
     };
   }
 }

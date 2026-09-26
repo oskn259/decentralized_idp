@@ -16,7 +16,6 @@ interface NodeConfigFile {
   total: number;
   groupPublicKey: string;
   secretKeyShare: string;
-  sealingSecretKey?: string;
 }
 
 export interface NodeConfig {
@@ -25,22 +24,10 @@ export interface NodeConfig {
   total: number;
   groupPublicKey: Uint8Array;
   secretKeyShare: bigint;
-  sealingSecretKey: Uint8Array;
 }
 
 export function loadNodeConfig(path: string): NodeConfig {
   return parseNodeConfig(fs.readFileSync(path, "utf8"));
-}
-
-function sealingSecretKeyOf(hex: string | undefined): Uint8Array {
-  if (hex === undefined) {
-    throw new Error("sealingSecretKey is missing: the node reads a version 2 node-<id>.json");
-  }
-  const key = hexToBytes(hex);
-  if (key.length !== 32) {
-    throw new Error(`sealingSecretKey must be 32 bytes, got ${key.length}`);
-  }
-  return key;
 }
 
 export function parseNodeConfig(text: string): NodeConfig {
@@ -51,7 +38,6 @@ export function parseNodeConfig(text: string): NodeConfig {
     total: file.total,
     groupPublicKey: hexToBytes(file.groupPublicKey),
     secretKeyShare: hexToBigInt(file.secretKeyShare),
-    sealingSecretKey: sealingSecretKeyOf(file.sealingSecretKey),
   };
 }
 
@@ -77,15 +63,21 @@ export const systemClock: Clock = {
 
 // ---- assembly ----------------------------------------------------------------
 
-/** `usersFile` holds the users registered so far; it is created on the first registration. */
-export function nodeFromConfig(config: NodeConfig, issuer: string, usersFile: string): IdentityNode {
+export interface NodeOptions {
+  issuer: string;
+  publicUrl: string;
+  /** The users registered so far; created on the first registration. */
+  usersFile: string;
+}
+
+export function nodeFromConfig(config: NodeConfig, { issuer, publicUrl, usersFile }: NodeOptions): IdentityNode {
   return {
     identity: {
       nodeId: config.nodeId,
       secretKeyShare: config.secretKeyShare,
       groupPublicKey: config.groupPublicKey,
-      sealingSecretKey: config.sealingSecretKey,
       issuer,
+      publicUrl,
       keyId: DEFAULT_KEY_ID,
     },
     users: new FileUserRepository(usersFile),

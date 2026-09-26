@@ -23,6 +23,11 @@ export function newUsersFile(): string {
 
 export const TEST_ISSUER = "http://localhost:3000";
 
+/** The URL a fixture node reports in `/health`, unless a test passes its own. */
+export function testPublicUrl(nodeId: number): string {
+  return `http://node${nodeId}.test`;
+}
+
 /** Absolute path of a file in `tests/fixtures/`. */
 export function fixturePath(name: string): string {
   return fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url));
@@ -56,6 +61,7 @@ export class FakeClock implements Clock {
 
 export interface BuildNodeOptions {
   issuer?: string;
+  publicUrl?: string;
   clock?: Clock;
   /** Defaults to a fresh file, so the node starts with no users. */
   usersFile?: string;
@@ -68,7 +74,14 @@ export function buildNodeFromFixture(
 ): { node: IdentityNode; config: NodeConfig; usersFile: string } {
   const config = loadNodeConfig(fixturePath(name));
   const usersFile = options.usersFile ?? newUsersFile();
-  const node = { ...nodeFromConfig(config, options.issuer ?? TEST_ISSUER, usersFile), clock: options.clock ?? new FakeClock() };
+  const node = {
+    ...nodeFromConfig(config, {
+      issuer: options.issuer ?? TEST_ISSUER,
+      publicUrl: options.publicUrl ?? testPublicUrl(config.nodeId),
+      usersFile,
+    }),
+    clock: options.clock ?? new FakeClock(),
+  };
   return { node, config, usersFile };
 }
 

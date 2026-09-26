@@ -1,6 +1,6 @@
 # e2e
 
-`docker compose` で上げた本物のコンテナ群を、ホストの Chromium から一人のユーザーとして操作する。テストはプロジェクトのコードを一切 import しない。頼るのは公開ポート（gateway `:3000`、rp `:3001`）と画面の文言だけ。
+`docker compose` で上げた本物のコンテナ群を、ホストの Chromium から一人のユーザーとして操作する。テストはプロジェクトのコードを一切 import しない。頼るのは公開ポート（gateway `:3000`、rp `:3001`、ノード `:4001..4003`）と画面の文言だけ。
 
 操作は 1 本。rp の「Sign in」→ ログイン画面で入力（初回は「Create account」にチェック）→「Sign on」→「Return to the relying party」→ クレーム表示 →「Refresh」。ケースごとに変えるのは入力とノードの生死だけで、ノードは `docker compose stop` で落とす。ユーザーは実行のたびに新しい名前で登録する。何も事前登録されていない。
 

@@ -8,6 +8,7 @@ import { loadNodeConfig, nodeFromConfig } from "./infra/node.js";
  *   USERS_FILE   registered users, kept across restarts (default /data/users.json)
  *   PORT         listen port                            (default 4000)
  *   ISSUER       gateway URL as the browser sees it     (default http://localhost:3000)
+ *   PUBLIC_URL   this node's URL as the browser sees it (default http://localhost:<PORT>)
  *   DEMO_LOG, FORCE_COLOR                               see http/demo-log.ts
  */
 
@@ -15,15 +16,16 @@ const configPath = process.env.NODE_CONFIG || "/secrets/node.json";
 const usersFile = process.env.USERS_FILE || "/data/users.json";
 const port = Number(process.env.PORT || 4000);
 const issuer = (process.env.ISSUER || "http://localhost:3000").replace(/\/+$/, "");
+const publicUrl = (process.env.PUBLIC_URL || `http://localhost:${port}`).replace(/\/+$/, "");
 
 const config = loadNodeConfig(configPath);
-const node = nodeFromConfig(config, issuer, usersFile);
+const node = nodeFromConfig(config, { issuer, publicUrl, usersFile });
 const demo = createDemoLog({ nodeId: config.nodeId });
 
 createNodeServer(node, demo).listen(port, () => {
   console.log(
     `[node] nodeId=${config.nodeId} threshold=${config.threshold}/${config.total} ` +
-      `issuer=${issuer} config=${configPath} users=${usersFile}`
+      `issuer=${issuer} publicUrl=${publicUrl} config=${configPath} users=${usersFile}`
   );
   console.log(`[node] listening on http://0.0.0.0:${port}`);
   demo.startup({ threshold: config.threshold, total: config.total });

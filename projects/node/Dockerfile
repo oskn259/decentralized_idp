@@ -37,6 +37,7 @@ ENV NODE_ENV=production
 ENV NODE_CONFIG=/secrets/node.json
 ENV USERS_FILE=/data/users.json
 ENV PORT=4000
+# PUBLIC_URL differs per node, so compose sets it; main.ts defaults to http://localhost:<PORT>.
 # `docker compose logs` is not a TTY, so the demo trace asks for colour explicitly.
 ENV DEMO_LOG=1
 ENV FORCE_COLOR=1

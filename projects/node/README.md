@@ -1,6 +1,6 @@
 # node
 
-n台あるアイデンティティノードの1台。グループEd25519鍵のFROSTシェア `s_i` と封印用のX25519鍵を持ち、`/register` で受け取ったユーザーごとにTOPRFシェア `k_i` と、そこから導かれる鍵 `h_i` を持つ。パスワードも、組み立て済みのトークンも見ない。セッション状態は持たず、保持するのは開いたままのFROSTラウンドのナンス（`(d_i, e_i)`）だけである。
+n台あるアイデンティティノードの1台。グループEd25519鍵のFROSTシェア `s_i` を持ち、ブラウザから `/register` で直接受け取ったユーザーごとにTOPRFシェア `k_i` と、そこから導かれる鍵 `h_i` を持つ。パスワードも、組み立て済みのトークンも見ない。セッション状態は持たず、保持するのは開いたままのFROSTラウンドのナンス（`(d_i, e_i)`）だけである。
 
 読者はFROST（閾値Ed25519署名）とTOPRF（閾値OPRF）の基本を知っているものとする。
 
@@ -10,13 +10,13 @@ n台あるアイデンティティノードの1台。グループEd25519鍵のFR
 
 [`../sdk`](../sdk)（`@decentralized-idp/sdk`）はプロトコルのTypeScript実装で、サンプル各コンポーネントが共有する。FROST・TOPRF・Shamir・AEAD・DPoPといった計算、3種のJWTのレイアウト、そしてこのノードのHTTP APIのスキーマ（`node-api`）がそこにあり、ここでは使うだけ。
 
-- `domain/value`: 複数の層から使う値（`NodeIdentity`: `s_i`・グループ公開鍵・封印用秘密鍵など）。1箇所でしか使わない型はその使用箇所の直上に定義する
+- `domain/value`: 複数の層から使う値（`NodeIdentity`: `s_i`・グループ公開鍵・自ノードの公開URLなど）。1箇所でしか使わない型はその使用箇所の直上に定義する
 - `domain/entity`: `UserRepository`が管理するユーザーレコード（`User`）の定義
-- `domain/repository`: エンティティ管理のインターフェース（`UserRepository`）と、登録済みのユーザー名を表す `UsernameTakenError`
+- `domain/repository`: エンティティ管理のインターフェース（`UserRepository`）と、登録済みのユーザー名または `sub` を表す `AlreadyRegisteredError`
 - `domain/infra`: repository以外の外部接続のインターフェース（`Clock`, `RoundStore`）
 - `domain/service/credential.ts`: `/sign` に提示されたクレデンシャルの検証規則（寿命・鮮度・`typ`・`iss`/`aud`）。3種のJWTのレイアウトは gateway と共有するため `@decentralized-idp/sdk/tokens` にある
 - `domain/usecase`: domainの外に提供する機能
-  - `register`: 自ノード宛てに封印されたシェアを開き、ユーザーとして保存する
+  - `register`: ブラウザから届いた自ノード向けのシェア `k_i`・`h_i` を、ユーザーとして保存する
   - `commit`: FROSTラウンド1。ナンスを生成してラウンドを開き、自ノードのコミットメントを返す
   - `signOn`: FROSTラウンド2（認証アサーション用）。TOPRFを評価し、アサーションに署名し、シェアを`h_i`で暗号化して返す
   - `issueTokens`: FROSTラウンド2（アクセストークン・リフレッシュトークン用）。アサーションまたはリフレッシュトークンとDPoPプルーフを検証し、2つの署名シェアを返す
@@ -24,9 +24,9 @@ n台あるアイデンティティノードの1台。グループEd25519鍵のFR
 - `infra/user-store.ts`: `UserRepository` の実装 `FileUserRepository`。`USERS_FILE` を起動時に読み、登録のたびに書き直す
 - `http`: [Hono](https://hono.dev) + `@hono/node-server` によるHTTP層
   - `endpoint/{health,register,commit,sign-on,sign}.ts`: エンドポイント1本につき1ファイル。検証済みボディを受けて usecase を呼び、応答を `@decentralized-idp/sdk/node-api` のスキーマで `z.encode` し、デモログの行を組む
-  - `server.ts`: Honoアプリの組み立て。メソッドとパスをここに並べ、各endpointを接続する
+  - `server.ts`: Honoアプリの組み立て。メソッドとパスをここに並べ、各endpointを接続する。ログイン画面はゲートウェイが issuer のオリジンで配信し、そこから `/register` を直接呼ぶため、`/register` だけに issuer オリジンからの CORS を許可する
   - `validate.ts`: 検証失敗を `400 { error }` にするフックと不正JSONの拒否。リクエスト・応答の [Zod](https://zod.dev) スキーマ自体は `@decentralized-idp/sdk/node-api` にあり、`server.ts` が `@hono/zod-validator` で各エンドポイントに接続する
-  - `answer.ts`: usecase の拒否を `{ error }` にする `answer`。`UsernameTakenError` は409、それ以外は400
+  - `answer.ts`: usecase の拒否を `{ error }` にする `answer`。`AlreadyRegisteredError`（`username` か `sub` が登録済み）は409、それ以外は400
   - `demo-log.ts`: デモトレースの行出力器。文面は各endpointが組む
 
 ### 依存の向き
@@ -62,25 +62,25 @@ npm start      # npm run buildでdist/を作った後
 | `NODE_CONFIG` | `/secrets/node.json` | ディーラーが書き出す`node-<id>.json`のパス |
 | `USERS_FILE` | `/data/users.json` | 登録済みユーザーの保存先。なければユーザー0人で起動し、最初の登録で作る |
 | `PORT` | `4000` | listenポート |
-| `ISSUER` | `http://localhost:3000` | ブラウザから見たゲートウェイのURL。`iss`として署名し、`/token`宛のDPoPプルーフの`htu`として要求する |
+| `ISSUER` | `http://localhost:3000` | ブラウザから見たゲートウェイのURL。`iss`として署名し、`/token`宛のDPoPプルーフの`htu`として要求する。`/register` の CORS で許可するオリジンでもある |
+| `PUBLIC_URL` | `http://localhost:<PORT>` | ブラウザから見たこのノードのURL。`/health` で返し、ゲートウェイがログイン画面に登録先として伝える。ノードごとに異なるので、コンテナでは compose が設定する |
 | `DEMO_LOG` | 有効 | `0`でデモトレースを止める |
 | `FORCE_COLOR` | 未設定 | 設定されていれば `0` 以外で有色。未設定ならTTY判定に従う |
 
 ### 設定ファイル
 
-`NODE_CONFIG`が指すJSONはディーラーが書き出すversion 2の形。バイト列とスカラーはすべて小文字hex、スカラーは64桁固定でビッグエンディアン（署名計算内部のリトルエンディアン表現とは向きが逆なので注意）。`sealingSecretKey` がない、または32バイトでないファイルは起動時に拒否する。
+`NODE_CONFIG`が指すJSONはディーラーが書き出すversion 2の形。バイト列とスカラーはすべて小文字hex、スカラーは64桁固定でビッグエンディアン（署名計算内部のリトルエンディアン表現とは向きが逆なので注意）。
 
 ```json
 {
   "version": 2, "nodeId": 1, "threshold": 2, "total": 3,
-  "groupPublicKey": "<hex 64桁>", "secretKeyShare": "<hex 64桁>",
-  "sealingSecretKey": "<hex 64桁: X25519 秘密鍵>"
+  "groupPublicKey": "<hex 64桁>", "secretKeyShare": "<hex 64桁>"
 }
 ```
 
 ### ユーザーファイル
 
-`USERS_FILE` は `/register` で受け取ったユーザーを保持する。登録のたびに全体を `<path>.tmp` に書いてから rename する。コンテナでは `/data` をボリュームにして再起動をまたいで残す。
+`USERS_FILE` は `/register` で受け取ったユーザーを保持する。`username` と `sub` はそれぞれ一意で、どちらかが既存の登録と重なれば409で拒否する。登録のたびに全体を `<path>.tmp` に書いてから rename する。コンテナでは `/data` をボリュームにして再起動をまたいで残す。
 
 ```json
 {
@@ -96,14 +96,23 @@ npm start      # npm run buildでdist/を作った後
 
 規範は [`../protocol/README.md`](../protocol/README.md) の「ノード HTTP API」。エンドポイント、ボディの形、エラー応答の規則はそこにあり、このノードはそのスキーマ（`@decentralized-idp/sdk/node-api`）をそのまま使う。
 
+| メソッド | パス | 呼び出し元 | 内容 |
+|---|---|---|---|
+| GET | `/health` | ゲートウェイ | `nodeId`・グループ公開鍵・`publicUrl` |
+| POST | `/register` | ブラウザ（直接、CORS） | `username`・`sub`・`k_i`・`h_i` を保存する。`username` か `sub` が登録済みなら409 |
+| POST | `/commit` | ゲートウェイ | FROSTラウンド1 |
+| POST | `/sign-on` | ゲートウェイ | TOPRF評価と認証アサーションへのFROSTラウンド2 |
+| POST | `/sign` | ゲートウェイ | アクセストークンとリフレッシュトークンへのFROSTラウンド2 |
+
 ```mermaid
 sequenceDiagram
+    participant B as ブラウザ
     participant GW as ゲートウェイ
     participant N as node
     GW->>N: GET /health
-    N-->>GW: sealingPublicKey
-    GW->>N: POST /register (username, sub, ブラウザが封印したシェア)
-    N-->>GW: nodeId
+    N-->>GW: publicUrl
+    B->>N: POST /register (username, sub, k_i, h_i)
+    N-->>B: nodeId
     GW->>N: POST /commit ×2 (access用, refresh用)
     N-->>GW: D_i, E_i
     GW->>N: POST /sign-on
@@ -130,7 +139,7 @@ sequenceDiagram
 
 ```
 [node1]   ● up      id=1 t=2/3   holds: s_1, and k_1, h_1 per registered user   never: pw, h, other s_i/k_i, sessions, access tokens
-[node1]   register  user=alice sub=usr_alice_12345  ← sealed share (opened here) → stored
+[node1]   register  user=alice sub=usr_alice_12345  ← k_i, h_i (from the browser, not via the gateway) → stored
 [node1]   commit    round=8f3a2b1c  → D_1,E_1 4f2a91cd 9b31aa02
 [node1]   sign-on   round=8f3a2b1c user=alice  ← A 5e6f7a8b  (D,E)×3  nonce_s c1d2e3f4  jkt 1a2b3c4d
                     → B_1=k_1·A 7f8e9d0c  ct_1=AEAD_h1(z_1) 2b3c4d5e

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ed25519 } from "@noble/curves/ed25519";
-import { FakeClock, TEST_ISSUER, readFixtureJson } from "./helpers/build-node.js";
+import { FakeClock, TEST_ISSUER, readFixtureJson, testPublicUrl } from "./helpers/build-node.js";
 import { DEFAULT_KEY_ID } from "../src/domain/value/node-identity.js";
 import {
   ClientSession,
@@ -79,8 +79,7 @@ function prepare(params: Parameters<typeof prepareSign>[0]): ReturnType<typeof p
 }
 
 describe("health", () => {
-  it("reports each node's own id and sealing key, and the shared group public key", async () => {
-    const sealingKeys: string[] = [];
+  it("reports each node's own id and public URL, and the shared group public key", async () => {
     for (const n of nodes) {
       const res = await getJson(n.url, "/health");
       expect(res.status).toBe(200);
@@ -88,19 +87,17 @@ describe("health", () => {
         status: "ok",
         nodeId: n.nodeId,
         groupPublicKey: base64UrlEncode(GROUP_PUBLIC_KEY),
-        sealingPublicKey: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+        publicUrl: testPublicUrl(n.nodeId),
       });
-      sealingKeys.push(res.body.sealingPublicKey);
     }
     expect(nodes.map((n) => n.nodeId).sort()).toEqual([1, 2, 3]);
-    expect(new Set(sealingKeys).size).toBe(3);
   });
 });
 
 describe("register", () => {
   it("refuses a second registration of a username with 409", async () => {
     const share = fixtureUserShares("another-password")[0];
-    const res = await postJson(nodes[0].url, "/register", await registerBody(nodes[0], share, "alice", "usr_other"));
+    const res = await postJson(nodes[0].url, "/register", registerBody(share, "alice", "usr_other"));
     expect(res.status).toBe(409);
     expect(res.body).toEqual({ error: "username alice is taken" });
 
@@ -108,19 +105,21 @@ describe("register", () => {
     expect(decodeJwt((await liveSession()).assertion).payload.sub).toBe("usr_alice_12345");
   });
 
-  it("refuses with 400 a share sealed to node 2 but sent to node 1", async () => {
-    const share = fixtureUserShares("pw")[1];
-    const res = await postJson(nodes[0].url, "/register", await registerBody(nodes[1], share, "carol", "usr_carol"));
-    expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: "share was not sealed for node 1 and username carol" });
+  it("refuses with 409 another username claiming alice's sub", async () => {
+    const share = fixtureUserShares("pw")[0];
+    const res = await postJson(nodes[0].url, "/register", registerBody(share, "carol", "usr_alice_12345"));
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "sub usr_alice_12345 is taken" });
   });
 
-  it("refuses with 400 a share sealed under another username", async () => {
-    const share = fixtureUserShares("pw")[0];
-    const body = await registerBody(nodes[0], share, "dave", "usr_carol");
-    const res = await postJson(nodes[0].url, "/register", { ...body, username: "carol" });
-    expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: "share was not sealed for node 1 and username carol" });
+  it("lets the login page at the issuer origin call /register cross-origin, and no other origin", async () => {
+    const preflight = (origin: string) =>
+      fetch(`${nodes[0].url}/register`, {
+        method: "OPTIONS",
+        headers: { Origin: origin, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "content-type" },
+      });
+    expect((await preflight(ISSUER)).headers.get("access-control-allow-origin")).toBe(ISSUER);
+    expect((await preflight("http://evil.test")).headers.get("access-control-allow-origin")).toBeNull();
   });
 
   it("keeps registered users across a restart on the same users file", async () => {

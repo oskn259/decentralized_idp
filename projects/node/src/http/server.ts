@@ -3,6 +3,7 @@ import { commitRequest, registerRequest, signOnRequest, signRequest } from "@dec
 import { createAdaptorServer } from "@hono/node-server";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { IdentityNode } from "../domain/usecase/identity-node.js";
 import { DemoLog } from "./demo-log.js";
 import { commitEndpoint } from "./endpoint/commit.js";
@@ -24,6 +25,8 @@ export function createNodeApp(node: IdentityNode, demo: DemoLog): Hono {
   });
 
   app.get("/health", (c) => c.json(health(node)));
+  // The login page, served by the gateway at the issuer origin, calls /register directly.
+  app.use("/register", cors({ origin: node.identity.issuer }));
   app.post("/register", requireJson, zValidator("json", registerRequest, badRequest(demo, "register")), (c) =>
     answer(c, demo, "register", () => registerEndpoint(node, c.req.valid("json"), demo))
   );

@@ -148,39 +148,6 @@ describe("POST /api/pasta/sign-on across the nodes", () => {
   });
 });
 
-describe("POST /api/pasta/register", () => {
-  function sealedShare(nodeId: number) {
-    return { ephemeralPublicKey: base64UrlEncode(new Uint8Array(32).fill(nodeId)), ciphertext: base64UrlEncode(new Uint8Array(48).fill(100 + nodeId)) };
-  }
-
-  function body(nodeIds: number[]) {
-    return { username: "alice", shares: nodeIds.map((nodeId) => ({ nodeId, share: sealedShare(nodeId) })) };
-  }
-
-  async function post(payload: unknown): Promise<Response> {
-    return fetch(`${server!.url}/api/pasta/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  }
-
-  it("409s when a node already has the username", async () => {
-    server = await startTestServer([new FakeNode(1), new FakeNode(2, { registerFails: "taken" }), new FakeNode(3)], dist);
-    const res = await post(body([1, 2, 3]));
-    expect(res.status).toBe(409);
-    expect((await res.json()).error).toBe("node 2 /register 409: username taken");
-    expect(server.logLines.some((l) => l.includes("✖ register rejected: node 2 /register 409"))).toBe(true);
-  });
-
-  it("400s when any node refuses otherwise", async () => {
-    server = await startTestServer([new FakeNode(1), new FakeNode(2), new FakeNode(3, { registerFails: "cannot open share" })], dist);
-    const res = await post(body([1, 2, 3]));
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("cannot open share");
-  });
-});
-
 describe("POST /token across the nodes", () => {
   it("answers the token set aggregated from every node's share, bound to the code's DPoP key", async () => {
     server = await startTestServer([new FakeNode(1), new FakeNode(2), new FakeNode(3)], dist);

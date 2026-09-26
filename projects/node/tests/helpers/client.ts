@@ -3,20 +3,21 @@ import { ristretto255 } from "@noble/curves/ed25519";
 import { MAX_ASSERTION_LIFETIME_SECONDS, REFRESH_TOKEN_LIFETIME_SECONDS } from "../../src/domain/service/credential.js";
 import { DEFAULT_KEY_ID } from "../../src/domain/value/node-identity.js";
 import { readFixtureJson } from "./build-node.js";
-import { RunningNode, getJson, postJsonOrThrow } from "./http-server.js";
+import { RunningNode, postJsonOrThrow } from "./http-server.js";
 import { aeadDecrypt, deriveAeadNonce } from "@decentralized-idp/sdk/aead";
 import { base64UrlDecode, base64UrlEncode } from "@decentralized-idp/sdk/base64url";
 import { calculateJwkThumbprint, createDPoPProof, DPoPKeyPair, exportDPoPJwk, generateDPoPKeyPair } from "@decentralized-idp/sdk/dpop";
 import { aggregateSignatureShares, computeGroupCommitment, FrostCommitment } from "@decentralized-idp/sdk/frost";
 import { assembleJwt, createSigningInput, decodeJwt as decodeJwtParts } from "@decentralized-idp/sdk/jwt";
 import { CommitResponseWire, SignOnResponseWire, SignResponseWire } from "@decentralized-idp/sdk/node-api";
-import { UserShare, createUserShares, sealUserShare } from "@decentralized-idp/sdk/register";
+import { bigIntToHex } from "@decentralized-idp/sdk/hex";
+import { UserShare, createUserShares } from "@decentralized-idp/sdk/register";
 import { assertionJwt } from "@decentralized-idp/sdk/tokens";
 import { blind, deriveServerKey, finalize, unblind } from "@decentralized-idp/sdk/toprf";
 
 /**
- * The gateway's client roles over real HTTP: the browser half registers a user by sealing
- * one share to each node, and assembles the assertion by decrypting every `ct_i` and
+ * The gateway's client roles over real HTTP: the browser half registers a user by sending
+ * each node its share directly, and assembles the assertion by decrypting every `ct_i` and
  * aggregating the FROST shares; the gateway half holds the DPoP key and spends that
  * assertion, or a refresh token, for an access and a refresh token.
  */
@@ -34,24 +35,18 @@ export function fixtureUserShares(password: string): UserShare[] {
   return createUserShares(password, threshold, total);
 }
 
-/** A `/register` body carrying `share`, sealed to the key `sealTo`'s `/health` publishes. */
-export async function registerBody(sealTo: RunningNode, share: UserShare, username: string, sub: string): Promise<Record<string, unknown>> {
-  const { body } = await getJson(sealTo.url, "/health");
-  const sealed = sealUserShare(share, username, base64UrlDecode(body.sealingPublicKey));
-  return {
-    username,
-    sub,
-    share: { ephemeralPublicKey: base64UrlEncode(sealed.ephemeralPublicKey), ciphertext: base64UrlEncode(sealed.ciphertext) },
-  };
+/** A `/register` body carrying `share` in plaintext, as the browser sends it. */
+export function registerBody(share: UserShare, username: string, sub: string): Record<string, unknown> {
+  return { username, sub, toprfKeyShare: bigIntToHex(share.toprfKeyShare.value), h_i: base64UrlEncode(share.h_i) };
 }
 
-/** Registration as the browser and gateway do it: one sealed share per node, `/register` on every node. */
+/** Registration as the browser does it: `/register` on every node, each with its own share. */
 export async function registerOverHttp(params: RegisterParams): Promise<void> {
   const shares = fixtureUserShares(params.password);
   await Promise.all(
-    params.nodes.map(async (node) => {
+    params.nodes.map((node) => {
       const share = shares.find((s) => s.nodeId === node.nodeId)!;
-      await postJsonOrThrow(node.url, "/register", await registerBody(node, share, params.username, params.sub));
+      return postJsonOrThrow(node.url, "/register", registerBody(share, params.username, params.sub));
     })
   );
 }
