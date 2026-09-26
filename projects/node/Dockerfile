@@ -35,6 +35,7 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NODE_CONFIG=/secrets/node.json
+ENV USERS_FILE=/data/users.json
 ENV PORT=4000
 # `docker compose logs` is not a TTY, so the demo trace asks for colour explicitly.
 ENV DEMO_LOG=1
@@ -46,7 +47,10 @@ COPY --from=build /app/projects/sdk/dist projects/sdk/dist
 COPY --from=build /app/projects/node/package.json projects/node/
 COPY --from=build /app/projects/node/dist projects/node/dist
 
-# The node only reads its config; mount the secrets directory read-only.
+# The node only reads its config; mount the secrets directory read-only. Registered users
+# are written to /data, a volume so they survive the container.
+RUN mkdir /data && chown node:node /data
+VOLUME /data
 USER node
 
 EXPOSE 4000

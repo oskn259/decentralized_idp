@@ -6,9 +6,9 @@
 ブラウザ ──→ rp ──→ gateway ──→ node1 / node2 / node3
 ```
 
-- **ブラウザ**でパスワードはブラインドされ、ノードが返す暗号化された署名シェアを復号・合成して**認証アサーション**（= 認可コード）を組み立てる。復号できるのはパスワードを知る者だけ
+- **ブラウザ**でパスワードはブラインドされ、ノードが返す暗号化された署名シェアを復号・合成して**認証アサーション**（= 認可コード）を組み立てる。復号できるのはパスワードを知る者だけ。登録もブラウザが行い、ユーザーごとの TOPRF 鍵を作って分割し、ノードごとに封印して送る
 - **gateway** は状態を一切持たない OAuth サーバー。ノードへの中継とシェアの合成だけを行い、シェアの復号も単独署名もできない
-- **node** はグループ署名鍵のシェア `s_i` とユーザーごとの TOPRF シェア `k_i` を持つ。パスワードもトークンも見ない
+- **node** はグループ署名鍵のシェア `s_i` と、登録で受け取ったユーザーごとの TOPRF シェア `k_i` を持つ。パスワードもトークンも見ない
 - **rp** は DPoP 鍵を持ち、認可コードをその鍵に束縛されたアクセストークンに交換する
 
 読者は FROST、TOPRF、OAuth 2.0、DPoP の基本を知っているものとする。
@@ -19,8 +19,8 @@
 |---|---|
 | [`projects/protocol`](projects/protocol) | 規範。ノード API の JSON Schema、テストベクタ、符号化・時間・トークンの規則。コードなし |
 | [`projects/sdk`](projects/sdk) | protocol の TypeScript 実装（`@decentralized-idp/sdk`）。全コンポーネントが使う |
-| [`projects/distKey`](projects/distKey) | 起動前に一度だけ走る trusted dealer。鍵を分割して `secrets/` に書く |
-| [`projects/node`](projects/node) | アイデンティティノード。`/commit` `/sign-on` `/sign` |
+| [`projects/distKey`](projects/distKey) | 起動前に一度だけ走る trusted dealer。グループ署名鍵を分割し、ノードごとの封印用鍵と合わせて `secrets/` に書く |
+| [`projects/node`](projects/node) | アイデンティティノード。`/register` `/commit` `/sign-on` `/sign` |
 | [`projects/gateway`](projects/gateway) | OAuth 認可サーバー。`/authorize` `/token` `/jwks.json` とログインページの配信 |
 | [`projects/idpFront`](projects/idpFront) | ログインページ（gateway が配信） |
 | [`projects/rp`](projects/rp) | relying party の最小実装 |
@@ -34,12 +34,12 @@ npm workspaces。`npm ci` はリポジトリルートで一度。各プロジェ
 
 ```bash
 docker compose up --build --wait      # distKey → node×3 → gateway（+ログインページ）→ rp
-open http://localhost:3001            # rp の「Sign in」から。alice / password123、bob / password456
+open http://localhost:3001            # rp の「Sign in」から。ログイン画面で「Create account」にチェックして登録し、そのままサインイン
 ```
 
 各コンポーネントが何を持ち何を持たないかは、それぞれの標準出力に1〜2行のトレースとして出る。`scripts/demo-tmux.sh` が5コンポーネントを並べて表示する。外側から一通り確認するのは [`projects/e2e`](projects/e2e)。
 
-鍵を作り直すときは `docker compose down && rm -rf secrets` の後に `up`。`secrets/` は gitignore 済み。
+鍵を作り直すときは `docker compose down -v && rm -rf secrets` の後に `up`（`-v` で各ノードのユーザー記録も消える）。`secrets/` は gitignore 済み。
 
 ## 流れ
 
@@ -70,6 +70,7 @@ sequenceDiagram
 - アサーションは 30 秒だけ有効。リプレイで得られるトークンも同じ DPoP 鍵に束縛されるので、鍵を持たない者には使えない
 - リフレッシュトークンもノードのグループ署名付き JWT。gateway はどのトークンも保持しない
 - ノードが 1 台落ちても t=2 で続く。2 台落ちると `quorum 1 < 2` で拒否される
+- 登録はログイン画面の「Create account」から。ブラウザが TOPRF 鍵 k を引いて t-of-n に分割し、`k_i` と `h_i` をノード i の X25519 鍵に封印して `POST /api/pasta/register` に送る。gateway は `sub` を採番して各ノードの `/register` に中継し、n 台全部が受理したら完了。gateway は封印を開けない。ノードは受け取った記録を自分の `/data` に保存する
 
 ## 開発
 
@@ -82,4 +83,4 @@ docker build -f projects/node/Dockerfile .   # 各 Dockerfile はリポジトリ
 
 コードの書き方は [`docs/requirements/code_philosophy.md`](docs/requirements/code_philosophy.md)、確認の手順は [`docs/requirements/qa_process.md`](docs/requirements/qa_process.md)。
 
-ユーザー登録はまだ distKey の事前登録のみ（動的な登録 API はない）。DKG も対象外で、鍵配布は trusted dealer による。
+DKG は対象外で、鍵配布は trusted dealer による。

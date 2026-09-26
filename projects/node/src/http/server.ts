@@ -1,5 +1,5 @@
 import http from "node:http";
-import { commitRequest, signOnRequest, signRequest } from "@decentralized-idp/sdk/node-api";
+import { commitRequest, registerRequest, signOnRequest, signRequest } from "@decentralized-idp/sdk/node-api";
 import { createAdaptorServer } from "@hono/node-server";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
@@ -7,6 +7,7 @@ import { IdentityNode } from "../domain/usecase/identity-node.js";
 import { DemoLog } from "./demo-log.js";
 import { commitEndpoint } from "./endpoint/commit.js";
 import { health } from "./endpoint/health.js";
+import { registerEndpoint } from "./endpoint/register.js";
 import { signOnEndpoint } from "./endpoint/sign-on.js";
 import { signEndpoint } from "./endpoint/sign.js";
 import { answer } from "./answer.js";
@@ -23,6 +24,9 @@ export function createNodeApp(node: IdentityNode, demo: DemoLog): Hono {
   });
 
   app.get("/health", (c) => c.json(health(node)));
+  app.post("/register", requireJson, zValidator("json", registerRequest, badRequest(demo, "register")), (c) =>
+    answer(c, demo, "register", () => registerEndpoint(node, c.req.valid("json"), demo))
+  );
   app.post("/commit", requireJson, zValidator("json", commitRequest, badRequest(demo, "commit")), (c) =>
     answer(c, demo, "commit", () => commitEndpoint(node, c.req.valid("json"), demo))
   );

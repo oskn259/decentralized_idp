@@ -1,14 +1,18 @@
 import { Commitment, FrostCommitment } from "@decentralized-idp/sdk/frost";
 import { Grant } from "@decentralized-idp/sdk/node-api";
+import { SealedBox } from "@decentralized-idp/sdk/seal";
 import { AccessTokenClaims } from "@decentralized-idp/sdk/tokens";
 
 /**
  * One identity node, as the gateway talks to it. The shapes mirror the node's own
- * `/commit`, `/sign-on` and `/sign`; `infra/node.ts`'s `HttpNode` carries them over HTTP.
+ * `/register`, `/commit`, `/sign-on` and `/sign`; `infra/node.ts`'s `HttpNode` carries them over HTTP.
  */
 export interface Node {
   readonly nodeId: number;
   readonly url: string;
+  /** X25519 key the browser seals this node's share of a new user to. */
+  readonly sealingPublicKey: Uint8Array;
+  register(request: NodeRegisterRequest): Promise<void>;
   /** FROST round 1: opens `roundId` on the node and returns its commitment. */
   commit(roundId: string): Promise<Commitment>;
   signOn(request: NodeSignOnRequest): Promise<NodeSignOnResponse>;
@@ -19,7 +23,19 @@ export interface Node {
 export interface NodeHealth {
   nodeId: number;
   groupPublicKey: Uint8Array;
+  sealingPublicKey: Uint8Array;
 }
+
+export interface NodeRegisterRequest {
+  username: string;
+  /** Assigned by the gateway; the node stores it as is. */
+  sub: string;
+  /** `{ k_i, h_i }` sealed to this node. The gateway cannot open it. */
+  share: SealedBox;
+}
+
+/** A node answered `/register` with 409: the username is already there. */
+export class UsernameTakenError extends Error {}
 
 export interface NodeSignOnRequest {
   roundId: string;

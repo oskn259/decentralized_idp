@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
  */
 const ALLOWED: Record<string, string[]> = {
   main: ["http", "http/leaf", "infra"],
-  http: ["http/endpoint", "http/leaf", "domain/usecase"],
+  http: ["http/endpoint", "http/leaf", "domain/usecase", "domain/repository"],
   "http/endpoint": ["http/leaf", "domain/usecase"],
   "http/leaf": [],
   infra: ["domain/usecase", "domain/entity", "domain/repository", "domain/infra", "domain/value"],

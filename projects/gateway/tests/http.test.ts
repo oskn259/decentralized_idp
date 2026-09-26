@@ -148,6 +148,103 @@ describe("POST /api/pasta/sign-on across the nodes", () => {
   });
 });
 
+describe("GET /api/pasta/nodes", () => {
+  it("lists every node's sealing key by nodeId, with the threshold and total", async () => {
+    server = await startTestServer([new FakeNode(3), new FakeNode(1), new FakeNode(2)], dist);
+    const res = await fetch(`${server.url}/api/pasta/nodes`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      threshold: 2,
+      total: 3,
+      nodes: [1, 2, 3].map((nodeId) => ({ nodeId, sealingPublicKey: base64UrlEncode(new Uint8Array(32).fill(nodeId)) })),
+    });
+  });
+});
+
+describe("POST /api/pasta/register", () => {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+  function sealedShare(nodeId: number) {
+    return { ephemeralPublicKey: base64UrlEncode(new Uint8Array(32).fill(nodeId)), ciphertext: base64UrlEncode(new Uint8Array(48).fill(100 + nodeId)) };
+  }
+
+  function body(nodeIds: number[]) {
+    return { username: "alice", shares: nodeIds.map((nodeId) => ({ nodeId, share: sealedShare(nodeId) })) };
+  }
+
+  async function post(payload: unknown): Promise<Response> {
+    return fetch(`${server!.url}/api/pasta/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  it("assigns one sub, hands each node its own share, and answers { sub }", async () => {
+    const nodes = [new FakeNode(1), new FakeNode(2), new FakeNode(3)];
+    server = await startTestServer(nodes, dist);
+    const res = await post(body([3, 1, 2]));
+    expect(res.status).toBe(200);
+    const { sub } = await res.json();
+    expect(sub).toMatch(UUID);
+    for (const node of nodes) {
+      expect(node.registerCalls).toHaveLength(1);
+      const call = node.registerCalls[0];
+      expect(call.username).toBe("alice");
+      expect(call.sub).toBe(sub);
+      expect(base64UrlEncode(call.share.ephemeralPublicKey)).toBe(sealedShare(node.nodeId).ephemeralPublicKey);
+      expect(base64UrlEncode(call.share.ciphertext)).toBe(sealedShare(node.nodeId).ciphertext);
+    }
+    expect(server.logLines.some((l) => l.includes("register") && l.includes("user=alice") && l.includes("/register ×3 sealed (cannot open) ✓"))).toBe(true);
+  });
+
+  it("409s when a node already has the username", async () => {
+    server = await startTestServer([new FakeNode(1), new FakeNode(2, { registerFails: "taken" }), new FakeNode(3)], dist);
+    const res = await post(body([1, 2, 3]));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("node 2 /register 409: username taken");
+    expect(server.logLines.some((l) => l.includes("✖ register rejected: node 2 /register 409"))).toBe(true);
+  });
+
+  it("400s when any node refuses otherwise", async () => {
+    server = await startTestServer([new FakeNode(1), new FakeNode(2), new FakeNode(3, { registerFails: "cannot open share" })], dist);
+    const res = await post(body([1, 2, 3]));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("cannot open share");
+  });
+
+  it("400s without calling any node when a node's share is missing", async () => {
+    const nodes = [new FakeNode(1), new FakeNode(2), new FakeNode(3)];
+    server = await startTestServer(nodes, dist);
+    const res = await post(body([1, 2]));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("no share for node 3");
+    expect(nodes.every((n) => n.registerCalls.length === 0)).toBe(true);
+  });
+
+  it("400s when a share names a node the gateway does not know", async () => {
+    server = await startTestServer([new FakeNode(1), new FakeNode(2), new FakeNode(3)], dist);
+    const res = await post(body([1, 2, 3, 4]));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("no such node: 4");
+  });
+
+  it("400s when one node gets two shares", async () => {
+    server = await startTestServer([new FakeNode(1), new FakeNode(2)], dist);
+    const res = await post(body([1, 2, 2]));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("more than one share for node 2");
+  });
+
+  it("400s when an ephemeralPublicKey does not decode to 32 bytes", async () => {
+    server = await startTestServer([new FakeNode(1)], dist, 1);
+    const bad = { username: "alice", shares: [{ nodeId: 1, share: { ...sealedShare(1), ephemeralPublicKey: base64UrlEncode(new Uint8Array(31)) } }] };
+    const res = await post(bad);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("shares.0.share.ephemeralPublicKey: must decode to 32 bytes, got 31");
+  });
+});
+
 describe("POST /token across the nodes", () => {
   it("answers the token set aggregated from every node's share, bound to the code's DPoP key", async () => {
     server = await startTestServer([new FakeNode(1), new FakeNode(2), new FakeNode(3)], dist);

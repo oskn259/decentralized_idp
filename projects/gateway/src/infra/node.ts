@@ -5,12 +5,23 @@ import {
   commitRequest,
   commitResponse,
   healthResponse,
+  registerRequest,
+  registerResponse,
   signOnRequest,
   signOnResponse,
   signRequest,
   signResponse,
 } from "@decentralized-idp/sdk/node-api";
-import { Node, NodeHealth, NodeSignOnRequest, NodeSignOnResponse, NodeTokenRequest, NodeTokenShares } from "../domain/infra/node.js";
+import {
+  Node,
+  NodeHealth,
+  NodeRegisterRequest,
+  NodeSignOnRequest,
+  NodeSignOnResponse,
+  NodeTokenRequest,
+  NodeTokenShares,
+  UsernameTakenError,
+} from "../domain/infra/node.js";
 import { Group } from "../domain/value/group.js";
 
 /** How long one node call may take before the node counts as unreachable for this round. */
@@ -20,8 +31,13 @@ export const NODE_TIMEOUT_MS = 5_000;
 export class HttpNode implements Node {
   constructor(
     readonly nodeId: number,
-    readonly url: string
+    readonly url: string,
+    readonly sealingPublicKey: Uint8Array
   ) {}
+
+  async register(request: NodeRegisterRequest): Promise<void> {
+    await this.post("/register", z.encode(registerRequest, request), registerResponse);
+  }
 
   async commit(roundId: string): Promise<Commitment> {
     const res = await this.post("/commit", z.encode(commitRequest, { roundId }), commitResponse);
@@ -46,14 +62,17 @@ export class HttpNode implements Node {
 
   async health(timeoutMs = NODE_TIMEOUT_MS): Promise<NodeHealth> {
     const res = await this.request("GET", "/health", undefined, timeoutMs, healthResponse);
-    return { nodeId: res.nodeId, groupPublicKey: res.groupPublicKey };
+    return { nodeId: res.nodeId, groupPublicKey: res.groupPublicKey, sealingPublicKey: res.sealingPublicKey };
   }
 
   private post<T>(path: string, body: unknown, response: z.ZodType<T>): Promise<T> {
     return this.request("POST", path, body, NODE_TIMEOUT_MS, response);
   }
 
-  /** Every failure — refused, timed out, non-2xx, malformed answer — is an Error naming the node. */
+  /**
+   * Every failure — refused, timed out, non-2xx, malformed answer — is an Error naming the node.
+   * A 409 is a `UsernameTakenError`: the node API answers 409 only for a taken username.
+   */
   private async request<T>(method: string, path: string, body: unknown, timeoutMs: number, response: z.ZodType<T>): Promise<T> {
     let res: Response;
     try {
@@ -68,7 +87,8 @@ export class HttpNode implements Node {
     }
     const json = (await res.json().catch(() => ({}))) as { error?: string };
     if (!res.ok) {
-      throw new Error(`node ${this.nodeId} ${path} ${res.status}: ${json.error ?? res.statusText}`);
+      const message = `node ${this.nodeId} ${path} ${res.status}: ${json.error ?? res.statusText}`;
+      throw res.status === 409 ? new UsernameTakenError(message) : new Error(message);
     }
     const parsed = response.safeParse(json);
     if (!parsed.success) {
@@ -119,11 +139,12 @@ async function probeNodes(urls: string[], group: Group, log: (line: string) => v
 
 /** The node behind `url`, or undefined while it does not answer. A different group key is fatal. */
 async function probeNode(url: string, group: Group, log: (line: string) => void): Promise<Node | undefined> {
-  const health = await new HttpNode(0, url).health().catch(() => undefined);
+  // Id and sealing key are what /health is asked for; placeholders until it answers.
+  const health = await new HttpNode(0, url, new Uint8Array()).health().catch(() => undefined);
   if (health === undefined) return undefined;
   if (bytesToHex(health.groupPublicKey) !== bytesToHex(group.groupPublicKey)) {
     throw new Error(`node at ${url} holds a different group key than group.json`);
   }
   log(`[gateway] discovered node ${health.nodeId} at ${url}`);
-  return new HttpNode(health.nodeId, url);
+  return new HttpNode(health.nodeId, url, health.sealingPublicKey);
 }

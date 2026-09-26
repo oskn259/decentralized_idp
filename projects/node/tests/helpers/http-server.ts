@@ -45,20 +45,28 @@ export interface StartNodeOptions extends BuildNodeOptions {
   demoLog?: DemoLog;
 }
 
+/** A fixture node, with the users file it reads and writes. */
+export interface FixtureNode extends RunningNode {
+  usersFile: string;
+}
+
 /**
  * The demo log is off unless a test asks for one: three nodes tracing every round would
  * bury the test output, and only `demo-log.test.ts` looks at those lines.
  */
-export async function startNodeFromFixture(name: string, options: StartNodeOptions = {}): Promise<RunningNode> {
-  const { node, config } = buildNodeFromFixture(name, options);
+export async function startNodeFromFixture(name: string, options: StartNodeOptions = {}): Promise<FixtureNode> {
+  const { node, config, usersFile } = buildNodeFromFixture(name, options);
   const demo = options.demoLog ?? createDemoLog({ nodeId: config.nodeId, env: { DEMO_LOG: "0" } });
-  return startNode(node, demo);
+  return { ...(await startNode(node, demo)), usersFile };
 }
 
-/** Starts node-1, node-2 and node-3 from the fixtures, sharing one clock unless told otherwise. */
-export async function startAllNodes(options: StartNodeOptions = {}): Promise<RunningNode[]> {
+/**
+ * Starts node-1, node-2 and node-3 from the fixtures, sharing one clock unless told otherwise.
+ * `usersFiles[i]` restarts node i+1 on a users file a previous run wrote.
+ */
+export async function startAllNodes(options: StartNodeOptions & { usersFiles?: string[] } = {}): Promise<FixtureNode[]> {
   return Promise.all(
-    ["node-1.json", "node-2.json", "node-3.json"].map((f) => startNodeFromFixture(f, options))
+    ["node-1.json", "node-2.json", "node-3.json"].map((f, i) => startNodeFromFixture(f, { ...options, usersFile: options.usersFiles?.[i] }))
   );
 }
 
