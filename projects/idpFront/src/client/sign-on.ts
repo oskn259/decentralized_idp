@@ -29,6 +29,17 @@ export interface SignOnRequest {
   now?: number;
   /** Receives the browser column of the demo trace, one line at a time. */
   log?: (line: string) => void;
+  /** Told as each node's share decrypts here, and when the shares add up to the assertion. */
+  progress?: SignOnProgress;
+}
+
+export interface SignOnProgress {
+  /** The blinded password is on its way to the gateway. */
+  sent(): void;
+  /** The gateway relayed it and every node's encrypted share came back in one answer. */
+  sharesReceived(nodeIds: number[]): void;
+  decrypted(nodeId: number): void;
+  assembled(nodeIds: number[]): void;
 }
 
 /** The gateway's answer to `POST /api/pasta/sign-on`: one commitment and one share per node. */
@@ -83,7 +94,9 @@ export async function signOn(request: SignOnRequest): Promise<string> {
       `A=r·H1(pw) ${short(A)}  jkt(rp) ${short(request.cnfJkt)}  nonce_s ${short(base64UrlEncode(sessionNonce))}`
   );
 
+  request.progress?.sent();
   const response = await requestShares(request, A, sessionNonce, claims, log);
+  request.progress?.sharesReceived(response.shares.map((s) => s.nodeId));
   log(`[browser]           ← B_i×${response.shares.length} ct_i×${response.shares.length} (D,E)×${response.commitments.length}`);
 
   const partials = response.shares.map((s) => ({ id: s.nodeId, point: ristretto255.Point.fromBytes(base64UrlDecode(s.toprfPartial)) }));
@@ -94,11 +107,16 @@ export async function signOn(request: SignOnRequest): Promise<string> {
   const { signingInput, headerB64, payloadB64 } = createSigningInput(
     assertionJwt({ issuer: request.issuer, keyId: KEY_ID }, response.shares[0].sub, claims)
   );
-  const signatureShares = response.shares.map((s) => decryptShare(s, h, sessionNonce, signingInput, log));
+  const signatureShares = response.shares.map((s) => {
+    const z = decryptShare(s, h, sessionNonce, signingInput, log);
+    request.progress?.decrypted(s.nodeId);
+    return z;
+  });
 
   const commitments = response.commitments.map((k) => ({ nodeId: k.nodeId, D: base64UrlDecode(k.D), E: base64UrlDecode(k.E) }));
   const R = computeGroupCommitment(signingInput, commitments);
   const assertion = assembleJwt(headerB64, payloadB64, aggregateSignatureShares(R, signatureShares));
+  request.progress?.assembled(response.shares.map((s) => s.nodeId));
   log(
     `[browser]           → h=finalize(pw, unblind(r,B_i))  h_i×${signatureShares.length}  z_i=dec(ct_i)×${signatureShares.length} ` +
       `${signatureShares.map((z) => short(bigIntToHex(z))).join(" ")}  R ${short(base64UrlEncode(R))}  σ=Σz_i  assertion ${short(assertion)} ✔ assembled only here`
