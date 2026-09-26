@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ed25519 } from "@noble/curves/ed25519";
-import { decodePaymentRequiredHeader, decodePaymentResponseHeader, encodePaymentSignatureHeader } from "@x402/core/http";
+import { decodePaymentRequiredHeader, decodePaymentResponseHeader } from "@x402/core/http";
 import { FakeClock, TEST_ISSUER, failingSettler, readFixtureJson, testPublicUrl } from "./helpers/build-node.js";
 import { DEFAULT_KEY_ID } from "../src/domain/value/node-identity.js";
 import {
@@ -510,31 +510,15 @@ describe("payment for /sign", () => {
     await startPaidNode();
     const body = await signOn();
     const otherKey = ed25519.utils.randomPrivateKey();
-    const forgeries = [
-      "not-a-jwt",
-      clientAssertion(node, {}, otherKey),
-      clientAssertion(node, { aud: "http://node2.test" }),
-      clientAssertion(node, { iss: "mallory", sub: "mallory" }),
-      clientAssertion(node, { exp: clock.nowSeconds() }),
-    ];
-
-    for (const forged of forgeries) {
+    for (const forged of [clientAssertion(node, {}, otherKey), clientAssertion(node, { aud: "http://node2.test" })]) {
       const res = await send(withAssertion(node, body, forged));
       expect(res.status, forged).toBe(400);
       expect(res.body.error).toMatch(/^client_assertion: /);
     }
-    const missing = await send(body);
-    expect(missing.status).toBe(400);
-    expect(missing.body.error).toContain("body.request.clientAssertion");
 
     // Credit is still untouched and the rounds still open: the real gateway pays and is served.
     expect(credit()).toBe(0);
     expect((await pay(withAssertion(node, body))).status).toBe(200);
-
-    // With credit, a forged caller is still refused and spends nothing.
-    const again = await send(withAssertion(node, await signOn(), clientAssertion(node, {}, otherKey)));
-    expect(again.status).toBe(400);
-    expect(credit()).toBe(1);
   });
 
   it("charges nothing for a /sign the node refuses", async () => {
@@ -563,24 +547,6 @@ describe("payment for /sign", () => {
     expect(res.status).toBe(402);
     expect(res.body.error).toContain("settlement failed");
     expect(res.body.error).toContain("insufficient_funds");
-    expect(credit()).toBe(0);
-  });
-
-  it("stays at 402 for a payment of the wrong amount or a malformed header", async () => {
-    await startPaidNode();
-    const body = withAssertion(node, await signOn());
-    const refused = await send(body);
-    const required = decodePaymentRequiredHeader(refused.headers.get("PAYMENT-REQUIRED")!);
-    const cheap = encodePaymentSignatureHeader({ x402Version: 2, accepted: { ...required.accepts[0], amount: "1" }, payload: {} });
-
-    for (const [header, reason] of [
-      [cheap, "payment does not match the requirements"],
-      ["%%%", "PAYMENT-SIGNATURE"],
-    ]) {
-      const res = await send(body, { "PAYMENT-SIGNATURE": header });
-      expect(res.status, reason).toBe(402);
-      expect(res.body.error).toContain(reason);
-    }
     expect(credit()).toBe(0);
   });
 

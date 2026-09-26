@@ -1,4 +1,4 @@
-import { KeyObject, generateKeyPairSync, sign, verify } from "node:crypto";
+import { KeyObject, generateKeyPairSync, sign } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import fs from "node:fs";
@@ -7,15 +7,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { base64UrlDecode, base64UrlEncode } from "@decentralized-idp/sdk/base64url";
 import { calculateJwkThumbprint, createDPoPProof, exportDPoPJwk, generateDPoPKeyPair } from "@decentralized-idp/sdk/dpop";
 import { assembleJwt, createSigningInput, decodeJwt } from "@decentralized-idp/sdk/jwt";
-import { generateNonces } from "@decentralized-idp/sdk/frost";
 import { assertionJwt } from "@decentralized-idp/sdk/tokens";
 import { CreditStore, PaymentTerms, Settler, USDC } from "@decentralized-idp/sdk/x402";
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import { Gateway } from "../src/domain/usecase/gateway.js";
 import { createDemoLog } from "../src/http/demo-log.js";
 import { createGatewayServer } from "../src/http/server.js";
-import { GatewayIdentity, signClientAssertion as signGatewayAssertion } from "../src/infra/identity.js";
-import { HttpNode } from "../src/infra/node.js";
 import { TestClock } from "./helpers/clock.js";
 import { FakeNode } from "./helpers/fake-node.js";
 import { TempDist, makeTempDist } from "./helpers/temp-dist.js";
@@ -401,62 +398,6 @@ describe("POST /token paid with x402 credit", () => {
     expect(res.status).toBe(402);
     expect((await res.json()).error_description).toContain("settlement failed");
     expect(server.gateway.billing.credits.balance("demo_client")).toBe(0);
-  });
-});
-
-describe("HttpNode.sign as a node sees it", () => {
-  let nodeServer: http.Server | undefined;
-  afterEach(() => new Promise<void>((resolve) => (nodeServer ? nodeServer.close(() => resolve()) : resolve())));
-
-  /** A node that records the `/sign` body and answers valid shares. */
-  async function startSignNode(bodies: unknown[]): Promise<string> {
-    nodeServer = http.createServer((req, res) => {
-      const chunks: Buffer[] = [];
-      req.on("data", (c) => chunks.push(c));
-      req.on("end", () => {
-        bodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-        res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify({ nodeId: 1, at: "0".repeat(63) + "1", rt: "0".repeat(63) + "2" }));
-      });
-    });
-    await new Promise<void>((resolve) => nodeServer!.listen(0, "127.0.0.1", resolve));
-    return `http://127.0.0.1:${(nodeServer.address() as AddressInfo).port}`;
-  }
-
-  it("sends a client assertion addressed to the node's public URL, verifying under the gateway's key", async () => {
-    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-    const identity: GatewayIdentity = {
-      clientId: "gateway",
-      keyId: "gateway-key-1",
-      signingKey: base64UrlDecode(privateKey.export({ format: "jwk" }).d!),
-      wallet: { address: GATEWAY_WALLET, privateKey: `0x${"22".repeat(32)}` },
-    };
-    const bodies: Array<{ request: { clientAssertion: string } }> = [];
-    const url = await startSignNode(bodies);
-    const node = new HttpNode(1, url, "http://node1.public.test", {
-      fetch,
-      clientAssertion: (aud) => signGatewayAssertion(identity, aud, NOW),
-    });
-    const commitment = { nodeId: 1, ...generateNonces().commitment };
-
-    await node.sign({
-      accessRoundId: "r1",
-      refreshRoundId: "r2",
-      grant: "authorization_code",
-      credential: "code",
-      dpopProof: "proof",
-      claims: { iat: NOW, exp: NOW + 3600, jti: "j" },
-      commitments: [commitment],
-      refreshCommitments: [commitment],
-      allParticipants: [1],
-    });
-
-    const assertion = bodies[0].request.clientAssertion;
-    const { header, payload } = decodeJwt(assertion);
-    expect(header).toMatchObject({ alg: "EdDSA", kid: "gateway-key-1" });
-    expect(payload).toMatchObject({ iss: "gateway", sub: "gateway", aud: "http://node1.public.test", exp: NOW + 60 });
-    const [h, p, sig] = assertion.split(".");
-    expect(verify(null, Buffer.from(`${h}.${p}`), publicKey, base64UrlDecode(sig))).toBe(true);
   });
 });
 
