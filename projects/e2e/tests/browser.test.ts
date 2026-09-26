@@ -1,25 +1,25 @@
 import { Browser, Page, chromium } from "playwright";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { SCOPE, Stack, startStack } from "./helpers/stack.js";
+import { GATEWAY_URL, RP_URL, SCOPE, restore, stopNode, up } from "./helpers/compose.js";
 
 /**
- * A person at the relying party's page, in Chromium. One path is driven: "Sign in" → the login
- * page → "Sign on" → "Return to the relying party" → the claims → "Refresh". The cases differ
- * only in what is typed and which nodes are up, so the later tests close nodes and stay last.
+ * A person at the relying party's page, in Chromium, against the containers. One path is
+ * driven: "Sign in" → the login page → "Sign on" → "Return to the relying party" → the claims
+ * → "Refresh". The cases differ only in what is typed and which nodes are up, so the tests
+ * that stop nodes come last and the stack is restored afterwards.
  */
 
-let stack: Stack;
 let browser: Browser;
 let page: Page;
 
 beforeAll(async () => {
-  stack = await startStack();
+  up();
   browser = await chromium.launch();
 });
 
 afterAll(async () => {
   await browser?.close();
-  await stack?.close();
+  restore();
 });
 
 beforeEach(async () => {
@@ -32,9 +32,9 @@ afterEach(async () => {
 
 /** From the relying party's page to the login page's verdict on this username and password. */
 async function signOn(username: string, password: string): Promise<void> {
-  await page.goto(stack.rpUrl);
+  await page.goto(RP_URL);
   await page.getByRole("link", { name: "Sign in" }).click();
-  await page.waitForURL(`${stack.gatewayUrl}/login?**`);
+  await page.waitForURL(`${GATEWAY_URL}/login?**`);
   await page.getByLabel("Username").fill(username);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign on" }).click();
@@ -50,7 +50,7 @@ async function verdict(): Promise<string | null> {
 /** "Return to the relying party": the callback, the code exchange, and the claims it shows. */
 async function returnToRp(): Promise<string> {
   await page.getByRole("button", { name: "Return to the relying party" }).click();
-  await page.waitForURL(`${stack.rpUrl}/callback?**`);
+  await page.waitForURL(`${RP_URL}/callback?**`);
   return page.locator("body").innerText();
 }
 
@@ -66,7 +66,7 @@ describe("alice at the relying party", () => {
     const callbackUrl = page.url();
 
     await page.getByRole("button", { name: "Refresh" }).click();
-    await page.waitForURL(`${stack.rpUrl}/refresh`);
+    await page.waitForURL(`${RP_URL}/refresh`);
     expect(await page.locator("body").innerText()).toContain("usr_alice_12345");
 
     const replay = await page.goto(callbackUrl);
@@ -77,7 +77,7 @@ describe("alice at the relying party", () => {
   it("is refused with a wrong password, in the browser, before anything reaches the relying party", async () => {
     await signOn("alice", "wrong");
     expect(await verdict()).toContain("wrong password");
-    expect(new URL(page.url()).origin).toBe(stack.gatewayUrl);
+    expect(new URL(page.url()).origin).toBe(GATEWAY_URL);
   });
 
   it("is refused as an unknown user", async () => {
@@ -88,14 +88,14 @@ describe("alice at the relying party", () => {
 
 describe("with nodes going down", () => {
   it("still signs in with two of three nodes", async () => {
-    await stack.nodes[2].close();
+    stopNode(3);
     await signOn("alice", "password123");
     expect(await verdict()).toBeNull();
     expect(await returnToRp()).toContain("usr_alice_12345");
   });
 
   it("is refused with one of three", async () => {
-    await stack.nodes[1].close();
+    stopNode(2);
     await signOn("alice", "password123");
     expect(await verdict()).toContain("quorum 1 < 2");
   });

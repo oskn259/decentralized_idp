@@ -1,12 +1,12 @@
 import { defineConfig } from "vitest/config";
 
-/** One file, its tests in order: the later ones take nodes down. Chromium takes a moment to start. */
+/** One file, its tests in order: the later ones stop containers. `docker compose up --build` can take minutes. */
 export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
     fileParallelism: false,
-    testTimeout: 30_000,
-    hookTimeout: 60_000,
+    testTimeout: 60_000,
+    hookTimeout: 600_000,
   },
 });

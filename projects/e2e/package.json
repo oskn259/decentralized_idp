@@ -1,12 +1,12 @@
 {
   "name": "decentralized-idp-e2e",
   "version": "0.1.0",
-  "description": "The whole system driven from a real browser: three nodes, the gateway with the built login page, and the relying party, all in this process",
+  "description": "The whole system as compose runs it, driven from a real browser on the host",
   "type": "module",
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "npm run build --prefix ../idpFront && vitest run",
+    "test": "vitest run",
     "browser:install": "playwright install chromium",
     "qa-gate": "npm run typecheck && npm run test"
   },

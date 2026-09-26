@@ -24,11 +24,11 @@
 | [`projects/gateway`](projects/gateway) | OAuth 認可サーバー。`/authorize` `/token` `/jwks.json` とログインページの配信 |
 | [`projects/idpFront`](projects/idpFront) | ログインページ（gateway が配信）と、ブラウザ役の CLI |
 | [`projects/rp`](projects/rp) | relying party の最小実装 |
-| [`projects/e2e`](projects/e2e) | 本物のブラウザ（Chromium）で rp からリフレッシュまでを通すテスト。node・gateway・rp をプロセス内で起動する |
+| [`projects/e2e`](projects/e2e) | compose で上げたコンテナ群を、ホストの Chromium で rp からリフレッシュまで通すテスト |
 | [`docs/requirements`](docs/requirements) | コーディング方針と QA プロセス |
 | [`scripts`](scripts) | 統合テストと tmux デモ表示 |
 
-npm workspaces。`npm ci` はリポジトリルートで一度。各プロジェクトは `npm run qa-gate`（型チェック + ビルド + カバレッジ付きテスト）を持ち、ルートの `npm run qa-gate` が全部を回す。e2e は Chromium を要するので、その前に `npm run browser:install --prefix projects/e2e` を一度。
+npm workspaces。`npm ci` はリポジトリルートで一度。各プロジェクトは `npm run qa-gate`（型チェック + ビルド + カバレッジ付きテスト）を持ち、ルートの `npm run qa-gate` が全部を回す。e2e は Docker と Chromium を要する。Chromium は `npm run browser:install --prefix projects/e2e` で一度だけ入れる。
 
 ## 動かす
 
