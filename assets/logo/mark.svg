@@ -1,0 +1,6 @@
+<svg width="512" height="512" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DAuth">
+  <path d="M55.90 16.52 A34 34 0 0 1 81.95 61.63" fill="none" stroke="#1A1E24" stroke-width="12" stroke-linecap="round"/>
+  <path d="M76.05 71.85 A34 34 0 0 1 23.95 71.85" fill="none" stroke="#1A1E24" stroke-width="12" stroke-linecap="round"/>
+  <path d="M18.05 61.63 A34 34 0 0 1 44.10 16.52" fill="none" stroke="#1A1E24" stroke-width="12" stroke-linecap="round" opacity="0.86"/>
+  <circle cx="50" cy="50" r="7" fill="#1A1E24"/>
+</svg>
