@@ -43,8 +43,8 @@ open http://localhost:3001            # rp の「Sign in」から。ログイン
 
 | ウォレット | 要るもの | 理由 |
 |---|---|---|
-| rp（`demo_client`） | USDC | gateway の `/token` に 100 回分（1 USDC）を前払いする |
-| gateway | USDC と ETH | ノードの `/sign` に 100 回分（0.3 USDC）ずつ前払いし、RP からの支払いを決済するガスを払う |
+| rp（`demo_client`） | USDC | gateway の `/token` に 10 回分（0.1 USDC）ずつ前払いする（compose の `CREDIT_BATCH`） |
+| gateway | USDC と ETH | ノードの `/sign` に 10 回分（0.03 USDC）ずつ前払いし、RP からの支払いを決済するガスを払う |
 | node1〜3 | ETH | gateway からの支払いを決済するガスを払う |
 
 Base Sepolia の ETH は Coinbase などの faucet、USDC は Circle の faucet で得られる。
@@ -80,7 +80,7 @@ sequenceDiagram
 - アサーションは 30 秒だけ有効。リプレイで得られるトークンも同じ DPoP 鍵に束縛されるので、鍵を持たない者には使えない
 - リフレッシュトークンもノードのグループ署名付き JWT。gateway はどのトークンも保持しない
 - ノードが 1 台落ちても t=2 で続く。2 台落ちると `quorum 1 < 2` で拒否される
-- 支払いはホワイトペーパー 3 章のとおり。RP は `/token` の成功 1 回につき 0.01 USDC、gateway はノードの `/sign` 1 回につき 0.003 USDC を、それぞれ 100 回分まとめて前払いする（残高がなくなったときだけ 402）。受け取る側が自分で検証と決済を行い、失敗した要求は無料。ノードが支払いを受け取った後に発行全体が失敗した分は gateway が負う
+- 支払いはホワイトペーパー 3 章のとおり。RP は `/token` の成功 1 回につき 0.01 USDC、gateway はノードの `/sign` 1 回につき 0.003 USDC を、それぞれまとめて前払いする（回数は `CREDIT_BATCH`、既定 100、compose では 10。残高がなくなったときだけ 402）。受け取る側が自分で検証と決済を行い、失敗した要求は無料。ノードが支払いを受け取った後に発行全体が失敗した分は gateway が負う
 - 登録はログイン画面の「Create account」から。ブラウザが `sub` を採番し、TOPRF 鍵 k を引いて t-of-n に分割し、`k_i` と `h_i` をノード i の `/register` に直接送る（PASTA と同じ）。n 台全部が受理したら完了。gateway は `GET /api/pasta/nodes` でノードの URL を教えるだけで、登録を見ない。ノードは username と `sub` の一意性を検査し、記録を自分の `/data` に保存する。compose ではノードを `localhost:4001..4003` に公開している
 
 ## 開発
@@ -93,5 +93,7 @@ docker build -f projects/node/Dockerfile .   # 各 Dockerfile はリポジトリ
 ```
 
 コードの書き方は [`docs/requirements/code_philosophy.md`](docs/requirements/code_philosophy.md)、確認の手順は [`docs/requirements/qa_process.md`](docs/requirements/qa_process.md)。
+
+CI（`.github/workflows/qa.yml`）は PR と main への push で同じ `npm run qa-gate` を回す。e2e の決済には入金済みのウォレットが要るので、`secrets/` 一式を tar + base64 にした GitHub Secret `E2E_SECRETS` から展開する。同じウォレットを 2 つの実行で同時に使わないよう、実行は直列。
 
 DKG は対象外で、鍵配布は trusted dealer による。
