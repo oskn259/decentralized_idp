@@ -141,7 +141,7 @@ npm run typecheck
 npm run qa-gate    # typecheck + build + カバレッジ付きテスト
 ```
 
-テストは `../node`、`../idpFront`、`../rp` のソースを直接importして実サーバー・実クライアントを起動する。
+テストは fake のノードに対して gateway 自身の振る舞い（ルーティング、拒否、除外と quorum、エラーコード）を見る。実ノードと本物の署名を通す確認は [`../e2e`](../e2e)。
 
 ```bash
 # リポジトリルートで

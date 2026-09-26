@@ -13,11 +13,12 @@ export const SCOPE = "profile";
 
 const repoRoot = fileURLToPath(new URL("../../../..", import.meta.url));
 
-function compose(...args: string[]): void {
+function compose(...args: string[]): string {
   const run = spawnSync("docker", ["compose", ...args], { cwd: repoRoot, encoding: "utf8" });
   if (run.status !== 0) {
     throw new Error(`docker compose ${args.join(" ")} failed:\n${run.stderr}`);
   }
+  return run.stdout;
 }
 
 /** Builds and starts everything, returning once every service reports healthy. */
@@ -33,4 +34,9 @@ export function stopNode(id: 1 | 2 | 3): void {
 /** Brings stopped services back and waits for them to be healthy again. */
 export function restore(): void {
   compose("up", "--wait");
+}
+
+/** Everything every container has logged so far. */
+export function logs(): string {
+  return compose("logs", "--no-color");
 }

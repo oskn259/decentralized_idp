@@ -5,11 +5,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRpApp } from "../src/http/server.js";
 
 /**
- * The relying party's own HTTP surface: `createRpApp` now runs RFC 8414 discovery against
- * `gatewayUrl` at start-up, so these tests stand a tiny fake authorization server up front
- * that answers only `/.well-known/oauth-authorization-server` — enough for discovery to
- * succeed — since none of the routes exercised here (`/`, an unknown `/callback` state, an
- * unknown `/refresh` session) ever reaches the token endpoint or the JWKS.
+ * The relying party's own HTTP surface, against a tiny fake authorization server: it
+ * answers RFC 8414 discovery (which `createRpApp` runs at start-up) and refuses every code
+ * at `/token`, so the relying party's handling of the gateway's refusals can be seen
+ * without a gateway. Real tokens are `../e2e`'s job.
  */
 
 const CLIENT_ID = "demo_client";
@@ -40,6 +39,12 @@ beforeAll(async () => {
     if (req.url === "/.well-known/oauth-authorization-server") {
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(metadataFor(gatewayUrl)));
+      return;
+    }
+    if (req.url === "/token") {
+      res.statusCode = 400;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ error: "invalid_grant", error_description: "the code did not verify" }));
       return;
     }
     res.statusCode = 404;
@@ -96,7 +101,27 @@ describe("GET /login", () => {
   });
 });
 
+/** `/login`'s redirect carries the state the relying party will accept back on `/callback`. */
+async function freshState(): Promise<string> {
+  const location = new URL((await app.request("/login")).headers.get("location") as string);
+  return location.searchParams.get("state") as string;
+}
+
 describe("GET /callback", () => {
+  it("shows the gateway's refusal of the code with 400", async () => {
+    const state = await freshState();
+    const res = await app.request(`/callback?code=whatever&state=${state}`);
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("invalid_grant: the code did not verify");
+  });
+
+  it("shows the gateway's /authorize refusal, carried back as error and state, with 400", async () => {
+    const state = await freshState();
+    const res = await app.request(`/callback?error=invalid_request&error_description=scope%3A+is+required&state=${state}`);
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("invalid_request: scope: is required");
+  });
+
   it("refuses an unknown state with 400", async () => {
     const res = await app.request("/callback?code=whatever&state=nobody-asked");
     expect(res.status).toBe(400);
