@@ -1,0 +1,29 @@
+# Identity node 3. Build context is the repository root: `fly deploy . -c deploy/fly/node3.toml`.
+app = "dcidp-node3"
+primary_region = "nrt"
+
+[env]
+  ISSUER = "https://dcidp-gateway.fly.dev"
+  PUBLIC_URL = "https://dcidp-node3.fly.dev"
+  CREDIT_BATCH = "10"
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/health"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+
+[mounts]
+  source = "data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

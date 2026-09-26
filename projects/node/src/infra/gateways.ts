@@ -13,9 +13,13 @@ interface GatewayEntry {
   jwks: { keys: Array<{ kty?: string; crv?: string; x?: string }> };
 }
 
-export function loadGateways(path: string): Gateway[] {
-  const file = JSON.parse(fs.readFileSync(path, "utf8")) as GatewaysFile;
+export function parseGateways(text: string): Gateway[] {
+  const file = JSON.parse(text) as GatewaysFile;
   return file.clients.map(gatewayOf);
+}
+
+export function loadGateways(path: string): Gateway[] {
+  return parseGateways(fs.readFileSync(path, "utf8"));
 }
 
 /** The first Ed25519 key of the gateway's JWKS; a gateway without one cannot authenticate. */

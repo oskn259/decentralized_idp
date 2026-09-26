@@ -5,19 +5,23 @@ import { PaymentTerms, USDC, evmSettler } from "@decentralized-idp/sdk/x402";
 import { Gateway } from "./domain/usecase/gateway.js";
 import { createDemoLog } from "./http/demo-log.js";
 import { createGatewayServer } from "./http/server.js";
-import { loadClients } from "./infra/clients.js";
+import fs from "node:fs";
+import { parseClients } from "./infra/clients.js";
 import { systemClock } from "./infra/clock.js";
 import { FileCreditStore } from "./infra/credit-store.js";
-import { loadGroup } from "./infra/group.js";
-import { loadIdentity, signClientAssertion } from "./infra/identity.js";
+import { parseGroup } from "./infra/group.js";
+import { parseIdentity, signClientAssertion } from "./infra/identity.js";
 import { discoverNodes } from "./infra/node.js";
 
 /** Configuration comes from the environment; the README lists every variable. */
 const port = Number(process.env.PORT || 3000);
 const issuer = (process.env.ISSUER || `http://localhost:${port}`).replace(/\/+$/, "");
-const group = loadGroup(process.env.GROUP_CONFIG || "/secrets/group.json", issuer);
-const clients = loadClients(process.env.CLIENTS_CONFIG || "/secrets/clients.json");
-const identity = loadIdentity(process.env.GATEWAY_KEY_FILE || "/secrets/gateway.json");
+/** A secret file's content: given inline (`*_JSON`), or read from the path. */
+const secretJson = (jsonVar: string, pathVar: string, defaultPath: string): string =>
+  process.env[jsonVar] ?? fs.readFileSync(process.env[pathVar] || defaultPath, "utf8");
+const group = parseGroup(secretJson("GROUP_JSON", "GROUP_CONFIG", "/secrets/group.json"), issuer);
+const clients = parseClients(secretJson("CLIENTS_JSON", "CLIENTS_CONFIG", "/secrets/clients.json"));
+const identity = parseIdentity(secretJson("GATEWAY_KEY_JSON", "GATEWAY_KEY_FILE", "/secrets/gateway.json"));
 const nodeUrls = (process.env.NODE_URLS || "http://localhost:4001,http://localhost:4002,http://localhost:4003")
   .split(",")
   .map((url) => url.trim().replace(/\/+$/, ""))

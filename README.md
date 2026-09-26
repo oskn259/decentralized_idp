@@ -27,6 +27,7 @@
 | [`projects/e2e`](projects/e2e) | compose で上げたコンテナ群を、ホストの Chromium で rp からリフレッシュまで通すテスト |
 | [`docs/requirements`](docs/requirements) | コーディング方針と QA プロセス |
 | [`scripts`](scripts) | tmux デモ表示 |
+| [`deploy/fly`](deploy/fly) | Fly.io への配備（5 アプリ、東京） |
 
 npm workspaces。`npm ci` はリポジトリルートで一度。各プロジェクトは `npm run qa-gate`（型チェック + ビルド + カバレッジ付きテスト）を持ち、ルートの `npm run qa-gate` が全部を回す。e2e は Docker と Chromium を要する。Chromium は `npm run browser:install --prefix projects/e2e` で一度だけ入れる。
 

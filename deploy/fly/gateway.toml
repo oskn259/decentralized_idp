@@ -1,0 +1,31 @@
+# The gateway, with the login page. Reaches the nodes over Fly's private network.
+app = "dcidp-gateway"
+primary_region = "nrt"
+
+[env]
+  ISSUER = "https://dcidp-gateway.fly.dev"
+  RP_ORIGIN = "https://dcidp-rp.fly.dev"
+  NODE_URLS = "http://dcidp-node1.internal:4000,http://dcidp-node2.internal:4000,http://dcidp-node3.internal:4000"
+  CREDITS_FILE = "/data/credits.json"
+  CREDIT_BATCH = "10"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/health"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "30s"
+
+[mounts]
+  source = "data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

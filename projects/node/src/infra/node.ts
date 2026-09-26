@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import { Clock } from "../domain/infra/clock.js";
+import { Gateway } from "../domain/value/gateway.js";
 import { RoundStore } from "../domain/infra/round-store.js";
 import { Billing, IdentityNode } from "../domain/usecase/identity-node.js";
 import { DEFAULT_KEY_ID } from "../domain/value/node-identity.js";
 import { FileCreditStore } from "./credit-store.js";
-import { loadGateways } from "./gateways.js";
 import { FileUserRepository } from "./user-store.js";
 import { FrostNonces } from "@decentralized-idp/sdk/frost";
 import { hexToBigInt, hexToBytes } from "@decentralized-idp/sdk/hex";
@@ -93,7 +93,8 @@ export interface NodeOptions {
 
 export interface BillingOptions {
   /** The gateways allowed to call `/sign`, in the shape of the gateway's `clients.json`. */
-  gatewaysFile: string;
+  /** Who may call `/sign`, from `gateways.json`. */
+  gateways: Gateway[];
   /** The credit left per gateway; created on the first payment. */
   creditsFile: string;
   network: keyof typeof USDC;
@@ -107,7 +108,7 @@ export interface BillingOptions {
 /** Payments go to the node's wallet, and the node settles them itself with the same wallet. */
 function billingOf(wallet: Wallet, options: BillingOptions): Billing {
   return {
-    gateways: loadGateways(options.gatewaysFile),
+    gateways: options.gateways,
     terms: { ...USDC[options.network], payTo: wallet.address, unitAmount: options.unitAmount, batch: options.batch },
     credits: new FileCreditStore(options.creditsFile),
     settler: evmSettler(options.network, options.rpcUrl, wallet.privateKey),

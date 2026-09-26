@@ -19,11 +19,15 @@ interface IdentityFile {
   wallet: { address: `0x${string}`; privateKey: `0x${string}` };
 }
 
-export function loadIdentity(path: string): GatewayIdentity {
-  const file = JSON.parse(fs.readFileSync(path, "utf8")) as IdentityFile;
+export function parseIdentity(text: string): GatewayIdentity {
+  const file = JSON.parse(text) as IdentityFile;
   const signingKey = file.key.kty === "OKP" && file.key.crv === "Ed25519" && file.key.d ? base64UrlDecode(file.key.d) : new Uint8Array();
-  if (signingKey.length !== 32) throw new Error(`${path} has no private OKP Ed25519 key`);
+  if (signingKey.length !== 32) throw new Error("the gateway's key file has no private OKP Ed25519 key");
   return { clientId: file.client_id, keyId: file.key.kid ?? "", signingKey, wallet: file.wallet };
+}
+
+export function loadIdentity(path: string): GatewayIdentity {
+  return parseIdentity(fs.readFileSync(path, "utf8"));
 }
 
 /** The gateway's `private_key_jwt` (RFC 7523) for one node: `aud` is that node's public URL. */
