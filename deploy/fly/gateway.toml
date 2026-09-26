@@ -7,7 +7,7 @@ primary_region = "nrt"
   RP_ORIGIN = "https://dcidp-rp.fly.dev"
   NODE_URLS = "http://dcidp-node1.internal:4000,http://dcidp-node2.internal:4000,http://dcidp-node3.internal:4000"
   CREDITS_FILE = "/data/credits.json"
-  CREDIT_BATCH = "10"
+  CREDIT_BATCH = "3"
 
 [http_service]
   internal_port = 3000
