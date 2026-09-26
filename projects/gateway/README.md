@@ -138,10 +138,10 @@ Cache-Control: no-store （成功・失敗とも）
 ```bash
 npm test          # vitest（../sdk のビルド込み）
 npm run typecheck
-npm run qa-gate    # typecheck + build + カバレッジ付きテスト
+npm run qa-gate    # typecheck + build + テスト
 ```
 
-テストは fake のノードに対して gateway 自身の振る舞い（ルーティング、拒否、除外と quorum、エラーコード）を見る。実ノードと本物の署名を通す確認は [`../e2e`](../e2e)。
+テストは、ノードが失敗や不正な応答を返したときの gateway の振る舞い（除外、quorum、OAuth のエラーコード）を fake ノードで見るものと、依存方向の検査だけ。ユーザーから見た動作は [`../e2e`](../e2e)。
 
 ```bash
 # リポジトリルートで

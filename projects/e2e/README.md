@@ -27,5 +27,7 @@ npm run qa-gate
 
 `GW` と `RP` で URL を変えられる（compose の issuer は `http://localhost:3000` なので、通常は変えない）。
 
+鍵ファイルの形式が違うブランチから来たときは、ノードが古い `secrets/` で起動に失敗する。`docker compose down -v && rm -rf secrets` で作り直す。
+
 - `tests/helpers/compose.ts`: `docker compose` の up・stop・復旧
 - `tests/browser.test.ts`: 上の表

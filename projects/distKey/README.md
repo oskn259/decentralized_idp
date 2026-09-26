@@ -38,8 +38,7 @@ distKey --out <dir> [--threshold 2] [--total 3] [--users <u>:<pw>:<sub>,...] [--
 ```bash
 npm ci --prefix ../..
 npm run dev -- --out ./out
-npm test
-npm run qa-gate
+npm run qa-gate    # typecheck + build
 ```
 
 ```bash
