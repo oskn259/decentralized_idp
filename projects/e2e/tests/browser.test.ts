@@ -41,7 +41,7 @@ afterEach(async () => {
 /** From the relying party's page to the login page's verdict on this username and password; `create` registers first. */
 async function signOn(username: string, password: string, create = false): Promise<void> {
   await page.goto(RP_URL);
-  await page.getByRole("link", { name: "Sign in" }).click();
+  await page.getByRole("link", { name: "Sign in with DAuth" }).click();
   await page.waitForURL(`${GATEWAY_URL}/login?**`);
   await page.getByLabel("Username").fill(username);
   await page.getByLabel("Password").fill(password);
@@ -67,7 +67,7 @@ describe("a new user at the relying party", () => {
   it("creates the account, signs in, refreshes, and cannot replay the callback", async () => {
     await signOn(USER, PASSWORD, true);
     expect(await verdict()).toBeNull();
-    expect(await page.locator(".trace").innerText()).not.toContain(PASSWORD);
+    expect(await page.locator(".trace").textContent()).not.toContain(PASSWORD);
 
     const claims = await returnToRp();
     sub = /sub\s+(\S+)/.exec(claims)?.[1] as string;
