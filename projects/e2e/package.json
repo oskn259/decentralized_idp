@@ -1,0 +1,19 @@
+{
+  "name": "decentralized-idp-e2e",
+  "version": "0.1.0",
+  "description": "The whole system as compose runs it, driven from a real browser on the host",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "browser:install": "playwright install chromium",
+    "qa-gate": "npm run typecheck && npm run test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "playwright": "^1.63.0",
+    "typescript": "^5.8.2",
+    "vitest": "^5.0.1"
+  }
+}
