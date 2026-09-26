@@ -65,11 +65,13 @@ npm start      # npm run buildでdist/を作った後
 | 変数 | デフォルト | 意味 |
 |---|---|---|
 | `NODE_CONFIG` | `/secrets/node.json` | ディーラーが書き出す`node-<id>.json`のパス |
+| `NODE_CONFIG_JSON` | なし | 同じファイルの中身。Secret が環境変数でしか渡せない環境向け。あればパスより優先 |
 | `USERS_FILE` | `/data/users.json` | 登録済みユーザーの保存先。なければユーザー0人で起動し、最初の登録で作る |
 | `PORT` | `4000` | listenポート |
 | `ISSUER` | `http://localhost:3000` | ブラウザから見たゲートウェイのURL。`iss`として署名し、`/token`宛のDPoPプルーフの`htu`として要求する。`/register` の CORS で許可するオリジンでもある |
 | `PUBLIC_URL` | `http://localhost:<PORT>` | ブラウザから見たこのノードのURL。`/health` で返し、ゲートウェイがログイン画面に登録先として伝える。ゲートウェイの `clientAssertion` の `aud` でもある。ノードごとに異なるので、コンテナでは compose が設定する |
 | `GATEWAYS_CONFIG` | `/secrets/gateways.json` | `/sign` を呼べるゲートウェイの一覧（[ゲートウェイファイル](#ゲートウェイファイル)） |
+| `GATEWAYS_JSON` | なし | 同じファイルの中身。あればパスより優先 |
 | `NETWORK` | `eip155:84532` | 支払いを受けるチェーン（CAIP-2）。`eip155:84532`（Base Sepolia）か `eip155:8453`（Base） |
 | `RPC_URL` | `https://sepolia.base.org` | そのチェーンの JSON-RPC。決済の送信と確認に使う |
 | `PRICE_SIGN` | `3000` | `/sign` 1回の価格。USDC の最小単位（10⁻⁶）で、3000 は 0.003 USDC |

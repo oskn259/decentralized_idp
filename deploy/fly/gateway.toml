@@ -6,8 +6,6 @@ primary_region = "nrt"
   ISSUER = "https://dcidp-gateway.fly.dev"
   RP_ORIGIN = "https://dcidp-rp.fly.dev"
   NODE_URLS = "http://dcidp-node1.internal:4000,http://dcidp-node2.internal:4000,http://dcidp-node3.internal:4000"
-  CLIENTS_CONFIG = "/secrets/clients.json"
-  GATEWAY_KEY_FILE = "/secrets/gateway.json"
   CREDITS_FILE = "/data/credits.json"
   CREDIT_BATCH = "10"
 

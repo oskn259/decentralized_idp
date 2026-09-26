@@ -9,7 +9,11 @@ interface GroupFile {
   groupPublicKey: string;
 }
 
-export function loadGroup(path: string, issuer: string): Group {
-  const file = JSON.parse(fs.readFileSync(path, "utf8")) as GroupFile;
+export function parseGroup(text: string, issuer: string): Group {
+  const file = JSON.parse(text) as GroupFile;
   return { issuer, threshold: file.threshold, keyId: file.keyId, groupPublicKey: hexToBytes(file.groupPublicKey) };
+}
+
+export function loadGroup(path: string, issuer: string): Group {
+  return parseGroup(fs.readFileSync(path, "utf8"), issuer);
 }

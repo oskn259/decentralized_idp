@@ -13,9 +13,13 @@ interface ClientEntry {
   jwks: { keys: Array<{ kty?: string; crv?: string; x?: string }> };
 }
 
-export function loadClients(path: string): Client[] {
-  const file = JSON.parse(fs.readFileSync(path, "utf8")) as ClientsFile;
+export function parseClients(text: string): Client[] {
+  const file = JSON.parse(text) as ClientsFile;
   return file.clients.map(clientOf);
+}
+
+export function loadClients(path: string): Client[] {
+  return parseClients(fs.readFileSync(path, "utf8"));
 }
 
 /** The first Ed25519 key of the client's JWKS; a client without one cannot authenticate. */

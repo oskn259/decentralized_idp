@@ -1,3 +1,4 @@
+import { loadGateways } from "../../src/infra/gateways.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -116,7 +117,7 @@ export function buildNodeFromFixture(
     publicUrl: options.publicUrl ?? testPublicUrl(config.nodeId),
     usersFile,
     billing: {
-      gatewaysFile: fixturePath("gateways.json"),
+      gateways: loadGateways(fixturePath("gateways.json")),
       creditsFile,
       network: "eip155:84532",
       rpcUrl: "http://127.0.0.1:1",

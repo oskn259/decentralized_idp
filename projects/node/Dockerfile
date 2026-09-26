@@ -52,7 +52,7 @@ COPY --from=build /app/projects/node/dist projects/node/dist
 
 # The node only reads its config; mount the secrets directory read-only. Registered users
 # and the gateways' credit are written to /data, a volume so they survive the container.
-RUN mkdir /data /secrets && chown node:node /data /secrets
+RUN mkdir /data && chown node:node /data
 VOLUME /data
 USER node
 
@@ -63,6 +63,4 @@ EXPOSE 4000
 HEALTHCHECK --interval=5s --timeout=3s --start-period=3s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 4000) + '/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
-# On a platform whose secrets are environment variables (Fly), SECRET_FILES_B64 is a base64 tar of the
-# key files this service reads; it is unpacked into /secrets at start. With a mounted /secrets it is unset.
-CMD ["sh", "-c", "[ -z \"$SECRET_FILES_B64\" ] || echo \"$SECRET_FILES_B64\" | base64 -d | tar -xz -C /secrets; exec node projects/node/dist/main.js"]
+CMD ["node", "projects/node/dist/main.js"]

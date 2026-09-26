@@ -4,7 +4,7 @@ RP（relying party）。**普通のOAuthクライアントライブラリだけ*
 
 ## ファイル
 
-- `src/main.ts`: 環境変数を読み、`CLIENT_KEY_FILE`（distKey が書く `client-<client_id>.json`）の秘密鍵を WebCrypto に取り込み、ウォレットを x402 の支払いに使って起動
+- `src/main.ts`: 環境変数を読み、`CLIENT_KEY_FILE`（distKey が書く `client-<client_id>.json`。中身を `CLIENT_KEY_JSON` で直接渡してもよい）の秘密鍵を WebCrypto に取り込み、ウォレットを x402 の支払いに使って起動
 - `src/http/server.ts`: `openid-client` でゲートウェイをディスカバリし、Hono のルート一式（`GET /`・`GET /login`・`GET /callback`・`POST /refresh`）とサインインのセッション表を持つ。セッションは最初 `state` をキーに置き、`/callback` で読んで消してから新しいidをキーに積み直す。どのキーも一度使われたら捨てる
 
 ## 流れ

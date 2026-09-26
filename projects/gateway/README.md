@@ -62,6 +62,7 @@ npm run dev    # tsxでsrc/main.tsを直接実行
 | `GROUP_CONFIG` | `/secrets/group.json` | distKeyが書き出す`group.json`のパス |
 | `CLIENTS_CONFIG` | `/secrets/clients.json` | distKeyが書き出す`clients.json`（登録済みクライアント）のパス |
 | `GATEWAY_KEY_FILE` | `/secrets/gateway.json` | distKeyが書き出す`gateway.json`（ゲートウェイ自身の鍵とウォレット）のパス |
+| `GROUP_JSON`, `CLIENTS_JSON`, `GATEWAY_KEY_JSON` | なし | 上の各ファイルの中身。Secret が環境変数でしか渡せない環境向け。あればパスより優先 |
 | `NETWORK` | `eip155:84532` | 支払いのチェーン（CAIP-2）。`eip155:84532`（Base Sepolia）か`eip155:8453`（Base） |
 | `RPC_URL` | `https://sepolia.base.org` | 決済をチェーンに送るRPC |
 | `PRICE_TOKEN` | `10000` | `/token` 1回の料金（USDCの最小単位。10000 = 0.01 USDC） |

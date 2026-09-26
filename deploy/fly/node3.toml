@@ -5,7 +5,6 @@ primary_region = "nrt"
 [env]
   ISSUER = "https://dcidp-gateway.fly.dev"
   PUBLIC_URL = "https://dcidp-node3.fly.dev"
-  NODE_CONFIG = "/secrets/node-3.json"
   CREDIT_BATCH = "10"
 
 [http_service]

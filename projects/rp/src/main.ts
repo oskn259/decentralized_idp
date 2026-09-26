@@ -9,6 +9,7 @@ import { createRpServer } from "./http/server.js";
  *   CLIENT_KEY_FILE  `{ client_id, key: <private Ed25519 JWK>, wallet: { address, privateKey } }`, as distKey
  *                    writes it: the key signs private_key_jwt, the wallet pays the gateway over x402
  *                                                           (default /secrets/client-<CLIENT_ID>.json)
+ *   CLIENT_KEY_JSON  the same file's content, for a platform whose secrets are environment variables
  *   NETWORK          CAIP-2 chain the wallet pays on         (default eip155:84532, Base Sepolia)
  *   SCOPE, PORT
  */
@@ -16,7 +17,7 @@ import { createRpServer } from "./http/server.js";
 const port = Number(process.env.PORT || 3001);
 const clientId = process.env.CLIENT_ID || "demo_client";
 const clientKeyFile = process.env.CLIENT_KEY_FILE || `/secrets/client-${clientId}.json`;
-const { key, wallet } = JSON.parse(fs.readFileSync(clientKeyFile, "utf8")) as {
+const { key, wallet } = JSON.parse(process.env.CLIENT_KEY_JSON ?? fs.readFileSync(clientKeyFile, "utf8")) as {
   key: JsonWebKey & { kid?: string };
   wallet: { privateKey: `0x${string}` };
 };
