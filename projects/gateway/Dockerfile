@@ -49,7 +49,7 @@ COPY --from=build /app/projects/gateway/package.json projects/gateway/
 COPY --from=build /app/projects/gateway/dist projects/gateway/dist
 COPY --from=build /app/projects/idpFront/dist ui
 # CREDITS_FILE lives here; a volume mounted over it keeps the image's ownership.
-RUN mkdir -p /data && chown node:node /data
+RUN mkdir -p /data /secrets && chown node:node /data /secrets
 
 USER node
 EXPOSE 3000
@@ -58,4 +58,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=5s --timeout=3s --start-period=3s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
-CMD ["node", "projects/gateway/dist/main.js"]
+# On a platform whose secrets are environment variables (Fly), SECRET_FILES_B64 is a base64 tar of the
+# key files this service reads; it is unpacked into /secrets at start. With a mounted /secrets it is unset.
+CMD ["sh", "-c", "[ -z \"$SECRET_FILES_B64\" ] || echo \"$SECRET_FILES_B64\" | base64 -d | tar -xz -C /secrets; exec node projects/gateway/dist/main.js"]

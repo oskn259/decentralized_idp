@@ -39,6 +39,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/projects/rp/package.json projects/rp/
 COPY --from=build /app/projects/rp/dist projects/rp/dist
 
+RUN mkdir -p /secrets && chown node:node /secrets
 USER node
 EXPOSE 3001
 
@@ -46,4 +47,6 @@ EXPOSE 3001
 HEALTHCHECK --interval=5s --timeout=3s --start-period=3s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3001) + '/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
-CMD ["node", "projects/rp/dist/main.js"]
+# On a platform whose secrets are environment variables (Fly), SECRET_FILES_B64 is a base64 tar of the
+# key files this service reads; it is unpacked into /secrets at start. With a mounted /secrets it is unset.
+CMD ["sh", "-c", "[ -z \"$SECRET_FILES_B64\" ] || echo \"$SECRET_FILES_B64\" | base64 -d | tar -xz -C /secrets; exec node projects/rp/dist/main.js"]

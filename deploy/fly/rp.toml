@@ -1,0 +1,25 @@
+# The demo relying party.
+app = "dcidp-rp"
+primary_region = "nrt"
+
+[env]
+  GATEWAY_URL = "https://dcidp-gateway.fly.dev"
+  RP_URL = "https://dcidp-rp.fly.dev"
+  CLIENT_KEY_FILE = "/secrets/client-demo_client.json"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "30s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
