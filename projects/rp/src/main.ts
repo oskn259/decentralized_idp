@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import { createRpServer } from "./http/server.js";
+import { createOAuthClient } from "./oauth.js";
+import { payWith } from "./x402.js";
 
 /**
  * Environment:
@@ -15,22 +17,23 @@ import { createRpServer } from "./http/server.js";
  */
 
 const port = Number(process.env.PORT || 3001);
+const gatewayUrl = (process.env.GATEWAY_URL || "http://localhost:3000").replace(/\/+$/, "");
+const rpUrl = (process.env.RP_URL || `http://localhost:${port}`).replace(/\/+$/, "");
 const clientId = process.env.CLIENT_ID || "demo_client";
 const clientKeyFile = process.env.CLIENT_KEY_FILE || `/secrets/client-${clientId}.json`;
 const { key, wallet } = JSON.parse(process.env.CLIENT_KEY_JSON ?? fs.readFileSync(clientKeyFile, "utf8")) as {
   key: JsonWebKey & { kid?: string };
   wallet: { privateKey: `0x${string}` };
 };
-const options = {
-  gatewayUrl: (process.env.GATEWAY_URL || "http://localhost:3000").replace(/\/+$/, ""),
-  rpUrl: (process.env.RP_URL || `http://localhost:${port}`).replace(/\/+$/, ""),
-  clientId,
-  clientKey: { key: await crypto.subtle.importKey("jwk", key, { name: "Ed25519" }, false, ["sign"]), kid: key.kid },
-  wallet: { privateKey: wallet.privateKey, network: (process.env.NETWORK || "eip155:84532") as `${string}:${string}` },
-  scope: process.env.SCOPE || "profile",
-};
 
-const server = await createRpServer(options);
-server.listen(port, () => {
-  console.log(`[rp] listening on http://0.0.0.0:${port}  gateway=${options.gatewayUrl} rp=${options.rpUrl} client_id=${options.clientId}`);
+const clientKey = { key: await crypto.subtle.importKey("jwk", key, { name: "Ed25519" }, false, ["sign"]), kid: key.kid };
+const redirectUri = `${rpUrl}/callback`;
+const scope = process.env.SCOPE || "profile";
+const network = (process.env.NETWORK || "eip155:84532") as `${string}:${string}`;
+
+const client = await createOAuthClient({ issuer: gatewayUrl, clientId, clientKey, redirectUri, scope });
+payWith(client.config, { privateKey: wallet.privateKey, network });
+
+createRpServer(client).listen(port, () => {
+  console.log(`[rp] listening on http://0.0.0.0:${port}  gateway=${gatewayUrl} rp=${rpUrl} client_id=${clientId}`);
 });
