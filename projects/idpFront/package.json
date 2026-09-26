@@ -1,14 +1,13 @@
 {
   "name": "decentralized-idp-idpfront",
   "version": "0.1.0",
-  "description": "The login page the gateway serves at /login: turns a password into the authentication assertion in the browser. Also the browser played from a terminal (cli.ts)",
+  "description": "The login page the gateway serves at /login: turns a password into the authentication assertion in the browser",
   "type": "module",
   "private": true,
   "scripts": {
     "dev": "vite",
     "build": "npm run build --prefix ../sdk && vite build",
     "typecheck": "npm run build --prefix ../sdk && tsc --noEmit",
-    "sign-on": "tsx cli.ts",
     "qa-gate": "npm run typecheck && vite build"
   },
   "dependencies": {
@@ -22,7 +21,6 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
-    "tsx": "^4.19.3",
     "typescript": "^5.8.2",
     "vite": "^8.3.0"
   }

@@ -1,6 +1,6 @@
 # idpFront
 
-ゲートウェイが `/login` で配信するログインページ。パスワードはブラウザの中で認証アサーション（＝OAuth認可コード）に変わり、外には出ない。`cli.ts` は同じ処理を端末から実行するもので、結合テストとデモに使う。
+ゲートウェイが `/login` で配信するログインページ。パスワードはブラウザの中で認証アサーション（＝OAuth認可コード）に変わり、外には出ない。
 
 読者はFROST（閾値Ed25519署名）とTOPRF（閾値OPRF）の基本を知っているものとする。
 
@@ -14,7 +14,6 @@ FROST・TOPRF・AEAD・JWT署名入力・DPoPの計算は [`../sdk`](../sdk)（`
   3. unblind・finalizeで`h`を求め、各`h_i`を導いてシェアを復号する。パスワードが違うとここでAEADタグが破れて失敗する。ノード側は正誤を知らない。
   4. シェアを合算して群署名にし、JWTを組み立てる。
 - `src/App.tsx`: ページ本体。URLから`c`（チャレンジ）、`redirect_uri`、`dpop_jkt`、`client_id`、`scope`、`state`を読み、クライアントIDとスコープ、デモトレース、認証結果を表示する。サインオンが済むと `redirect_uri?code=<assertion>&state=<state>` に遷移してリライングパーティへ戻る。
-- `cli.ts`: 端末で実行するブラウザ役。リライングパーティのフロント（DPoP鍵を持つ）とログインページ（パスワードをアサーションにする）の両方を演じる。`POST /token` の呼び出しは [`../rp`](../rp) の `src/token.ts` を使う。
 
 ## 流れ
 
@@ -40,28 +39,6 @@ npm run build      # Vite。dist/ をゲートウェイが LOGIN_DIST として�
 npm run dev        # :5173 のVite dev server。/api を :3000 のゲートウェイへプロキシ
 ```
 
-CLI:
-
-```bash
-npm run sign-on -- --gateway http://localhost:3000 --user alice --password <pw> [--refresh]
-```
-
-`cli.ts`のオプション。
-
-| オプション | デフォルト | 意味 |
-|---|---|---|
-| `--gateway` | `http://localhost:3000` | ゲートウェイのURL |
-| `--issuer` | `--gateway`と同じ | `iss`/`aud`として使うURL |
-| `--user` | `alice` | ユーザー名 |
-| `--password` | なし（必須） | パスワード |
-| `--client-id` | `demo_client` | アサーションの`clientId`クレーム |
-| `--scope` | `profile` | アサーションの`scope`クレーム |
-| `--nonce` | ランダム生成 | アサーションの`nonce`クレーム |
-| `--jkt` | なし | RP が発行した DPoP サムプリント。指定すると、それに束縛したアサーション（認可コード）を出力して止まる。鍵は RP にあるので `/token` は呼ばない。`scripts/integration-test.sh` が RP 経由の流れで使う |
-| `--refresh` | `false` | 指定するとリフレッシュトークンでの再取得も行う |
-
-標準出力に出るのはアクセストークンの1行のみ。デモトレースは標準エラー出力に出る。
-
 ## 開発
 
 ```bash
@@ -69,6 +46,6 @@ npm run typecheck
 npm run qa-gate    # typecheck + build
 ```
 
-テストは持たない。ログイン画面は本物のブラウザから、`cli.ts` は子プロセスとして、どちらも compose のコンテナ群に対して [`../e2e`](../e2e) が通す。
+テストは持たない。ログイン画面は本物のブラウザから、compose のコンテナ群に対して [`../e2e`](../e2e) が通す。
 
 このページは `projects/gateway/Dockerfile` によってビルドされ、ゲートウェイのイメージに組み込まれる。
