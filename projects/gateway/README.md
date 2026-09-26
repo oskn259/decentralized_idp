@@ -11,20 +11,24 @@ RP（relying party）とブラウザが直接話す相手であり、n台ある�
 [`../sdk`](../sdk)（`@decentralized-idp/sdk`）はサンプル各コンポーネントが共有するプロトコルのTypeScript実装（計算、トークンのレイアウト、ノードAPIのスキーマ）。ここでは使うだけ。
 
 - `domain/value/group.ts`: ゲートウェイが知るグループの情報（`issuer`、閾値、公開鍵、`kid`）。シェアは持たない
+- `domain/value/client.ts`: 登録済みクライアント（`client_id` と Ed25519 公開鍵）
 - `domain/infra/clock.ts`: 現在時刻の取得
 - `domain/infra/node.ts`: ノードとの通信のインターフェース（`Node`）とその要求・応答の型
 - `domain/usecase`: domainの外に提供する機能
   - `gateway.ts` の `openRounds`: 全ノードにFROSTラウンドを開かせ、閾値を満たすかを見る
   - `sign-on.ts` の `signOn`: サインオンの2ラウンドを中継する
   - `issue-tokens.ts` の `issueTokens`: クレデンシャルとDPoPプルーフからアクセストークンとリフレッシュトークンを組み立てる
+  - `client-auth.ts` の `authenticateClient`: `private_key_jwt` のクライアント認証
+  - `oauth-error.ts` の `OAuthError`: `/token` の拒否とそのエラーコード
 - `infra`: `domain/infra` の実装
   - `group.ts` の `loadGroup`: `group.json`の読み込み
+  - `clients.ts` の `loadClients`: `clients.json`の読み込み
   - `node.ts`: ノードとHTTPで話す`HttpNode`と、起動時にノードを探す`discoverNodes`。`HttpNode`はsdkの`node-api`スキーマでエンコード・デコードし、形の崩れたノードの応答は拒否する
   - `clock.ts` の `systemClock`: 現在時刻
 - `http`: [Hono](https://hono.dev) + `@hono/node-server` によるHTTP層
   - `server.ts`: Honoアプリの組み立て。メソッドとパスをここに並べ、各endpointを接続する
   - `endpoint/*.ts`: エンドポイント1本につき1ファイル。クエリ・ボディ・フォームのスキーマ（[Zod](https://zod.dev)）もここに置き、`server.ts` が `@hono/zod-validator` で接続する。base64url→bytesなどスキーマの部品はsdkの`node-api`から取る。`ui.ts` はログインページ（`LOGIN_DIST` の `index.html` と `assets/*`）の配信
-  - `validate.ts`: 検証失敗を `400 { error: "invalid_request", error_description }` / `400 { error }` にするフック
+  - `validate.ts`: 検証失敗を `400 { error, error_description }`（OAuth）/ `400 { error }` にするフック
   - `demo-log.ts`: デモトレースの行出力器。文面は各endpointが組む
 
 依存は常に下へ向かう（`tests/dependencies.test.ts` が検査する）。
@@ -53,6 +57,7 @@ npm run dev    # tsxでsrc/main.tsを直接実行
 | `PORT` | `3000` | listenポート |
 | `ISSUER` | `http://localhost:<PORT>` | ブラウザから見たゲートウェイのURL。全トークンの`iss`、メタデータの`issuer` |
 | `GROUP_CONFIG` | `/secrets/group.json` | distKeyが書き出す`group.json`のパス |
+| `CLIENTS_CONFIG` | `/secrets/clients.json` | distKeyが書き出す`clients.json`（登録済みクライアント）のパス |
 | `NODE_URLS` | `http://localhost:4001,http://localhost:4002,http://localhost:4003` | カンマ区切りのノードのベースURL |
 | `LOGIN_DIST` | `/app/ui` | ビルド済みログインUIのディレクトリ |
 | `RP_ORIGIN` | `http://localhost:3001` | `/token`と`/jwks.json`へのクロスオリジンアクセスを許すorigin。デフォルトは [`../rp`](../rp) のもの |
@@ -63,7 +68,7 @@ npm run dev    # tsxでsrc/main.tsを直接実行
 
 ## HTTP API
 
-RP から見ると RFC 6749 の認可コードフロー + RFC 9449 DPoP + RFC 9068 の JWT アクセストークン。`dpop_jkt` は RFC 9449 §10 の標準パラメータ。client 認証は `none`、PKCE は受け取って無視する（DPoP の鍵束縛が同じ役割を担う）。`../rp` は `openid-client` と `jose` だけで繋がる。
+RP から見ると RFC 6749 の認可コードフロー + RFC 9449 DPoP + RFC 9068 の JWT アクセストークン。`dpop_jkt` は RFC 9449 §10 の標準パラメータ。client 認証は `private_key_jwt`（RFC 7523、[クライアント認証](#クライアント認証)）、PKCE は受け取って無視する（DPoP の鍵束縛が同じ役割を担う）。`../rp` は `openid-client` と `jose` だけで繋がる。
 
 | メソッド | パス | 内容 |
 |---|---|---|
@@ -85,6 +90,7 @@ GET /authorize?client_id=...&redirect_uri=...&response_type=code&scope=...&dpop_
 → 302 /login?step=login&c=<challenge>&client_id=...&redirect_uri=...&scope=...&state=...&dpop_jkt=...
 → 302 redirect_uri?error=invalid_request&error_description=<field>: <理由>&state=...   # redirect_uri が使えるとき（RFC 6749 §4.1.2.1）
 → 400 { "error": "invalid_request", "error_description": "<field>: <理由>" }        # redirect_uri が無い・不正なとき
+→ 400 { "error": "unauthorized_client", "error_description": "unknown client_id <id>" }   # 未登録の client_id。redirect_uri は信用せずリダイレクトしない
 
 GET /api/pasta/nodes
 → 200 { "threshold", "total", "nodes": [{ "nodeId", "url" }] }   # nodeId 昇順。url は各ノードの /health の publicUrl
@@ -97,11 +103,34 @@ POST /api/pasta/sign-on
 
 POST /token   (application/x-www-form-urlencoded)
 DPoP: <proof>
-grant_type=authorization_code&code=<assertion>
-grant_type=refresh_token&refresh_token=<jwt>
+grant_type=authorization_code&code=<assertion>&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer&client_assertion=<jwt>
+grant_type=refresh_token&refresh_token=<jwt>&client_assertion_type=...&client_assertion=<jwt>
+（client_id は任意。送るなら認証されたクライアントと一致すること）
 → 200 { "access_token", "token_type": "DPoP", "expires_in", "refresh_token", "scope" }
-→ 400 { "error", "error_description" }   # invalid_request | invalid_grant | invalid_dpop_proof
+→ 400 { "error", "error_description" }   # invalid_request | invalid_client | invalid_grant | invalid_dpop_proof
 Cache-Control: no-store （成功・失敗とも）
+```
+
+メタデータは `token_endpoint_auth_methods_supported: ["private_key_jwt"]`、`token_endpoint_auth_signing_alg_values_supported: ["EdDSA", "Ed25519"]` を返す。
+
+## クライアント認証
+
+`/token` はクライアントを `private_key_jwt`（RFC 7523 §2.2）で認証する。登録されたRPだけが、自分の `client_id` 宛てに発行された認可コードとリフレッシュトークンを交換できる。`client_assertion` について確かめるのは次のとおり。どれかが欠ければ `invalid_client`。
+
+- `iss` が登録済みの `client_id` で、その鍵のEd25519署名（`alg` は `EdDSA` か `Ed25519`）
+- `sub` = `iss`
+- `aud` が `issuer` か `<issuer>/token`（文字列、またはどちらかを含む配列）
+- `exp` が未来、`jti` がある（DPoPと同じく `jti` の再利用は追跡しない）
+
+そのうえでクレデンシャルの `client_id` が認証されたクライアントと違えば `invalid_grant`。`/authorize` も未登録の `client_id` を拒否する。
+
+クライアントは `CLIENTS_CONFIG` のファイルで事前登録する（distKeyが書き出す）。各クライアントのJWKSの最初の `kty: OKP, crv: Ed25519` 鍵を使い、無ければ起動を止める。
+
+```json
+{ "version": 1, "clients": [
+  { "client_id": "demo_client",
+    "jwks": { "keys": [{ "kty": "OKP", "crv": "Ed25519", "x": "<base64url 32byte>", "kid": "demo_client-key-1", "use": "sig", "alg": "EdDSA" }] } }
+] }
 ```
 
 ## 登録
@@ -133,10 +162,11 @@ Cache-Control: no-store （成功・失敗とも）
 [gateway] authorize client_id=demo_client nonce=3d9dbfed-7e01-4d89-80c9-75443191a34b state=st dpop_jkt=VmE7pTg_  → redirect /login
 [gateway] sign-on   round=fb3792a0 user=alice nonce=c-1  ← A AkmcCzoP  jkt VmE7pTg_  (no pw)
                     round1 (D,E)×2 (node3 unreachable, excluded) → round2 ← B_i×2 ct_i×2 (no h_i, cannot decrypt) → relayed as-is
-[gateway] token     grant=authz  ← code(assertion) eyJhbGci + DPoP ✓ (node3 unreachable, excluded)  → 2×/commit ×2 → /sign → access_token eyJhbGciOiJFZERT (cnf.jkt=VmE7pTg_) + refresh_token
+[gateway] token     grant=authz client=demo_client  ← code(assertion) eyJhbGci + DPoP ✓ (node3 unreachable, excluded)  → 2×/commit ×2 → /sign → access_token eyJhbGciOiJFZERT (cnf.jkt=VmE7pTg_) + refresh_token
 [gateway] discovery public only
 [gateway] jwks      public only
 [gateway] ✖ sign-on rejected: quorum 1 < 2 (node3 unreachable)
+[gateway] ✖ token rejected: invalid_client: client_assertion: Invalid Ed25519 signature
 ```
 
 `(node3 unreachable, excluded)`は、そのラウンドが1台欠けたまま閾値を満たして進んだことを示す。
@@ -149,7 +179,7 @@ npm run typecheck
 npm run qa-gate    # typecheck + build + テスト
 ```
 
-テストは、ノードが失敗や不正な応答を返したときの gateway の振る舞い（除外、quorum、OAuth のエラーコード）を fake ノードで見るものと、依存方向の検査だけ。ユーザーから見た動作は [`../e2e`](../e2e)。
+テストは、ノードが失敗や不正な応答を返したときの gateway の振る舞い（除外、quorum、OAuth のエラーコード）を fake ノードで見るもの、攻撃者側から見たクライアント認証（アサーション無し、未登録の鍵、他クライアントのコード、未登録の `client_id`）、依存方向の検査だけ。ユーザーから見た動作は [`../e2e`](../e2e)。
 
 ```bash
 # リポジトリルートで

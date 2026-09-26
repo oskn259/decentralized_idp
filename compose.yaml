@@ -52,7 +52,8 @@ services:
 
   rp:
     build: { context: ., dockerfile: projects/rp/Dockerfile }
-    environment: { GATEWAY_URL: *issuer, RP_URL: http://localhost:3001 }
+    environment: { GATEWAY_URL: *issuer, RP_URL: http://localhost:3001, CLIENT_KEY_FILE: /secrets/client-demo_client.json }
+    volumes: ["./secrets:/secrets:ro"]
     network_mode: "service:gateway"
     depends_on: { gateway: { condition: service_healthy } }
 

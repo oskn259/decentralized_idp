@@ -3,12 +3,14 @@ import { parseArgs } from "node:util";
 import { DistributedKeys, distributeKeys } from "./domain/usecase/distribute-keys.js";
 import { existingOutputFiles, outputFileNames, outputFiles, writeOutputFiles } from "./infra/output.js";
 
-const USAGE = `distKey - splits the group signing key across the nodes
+const USAGE = `distKey - splits the group signing key across the nodes, and keys the demo relying parties
 
 Usage:
-  distKey --out <dir> [--threshold 2] [--total 3] [--force]
+  distKey --out <dir> [--threshold 2] [--total 3] [--clients demo_client] [--force]
 
-Writes <dir>/group.json and <dir>/node-<id>.json for id 1..total.
+Writes <dir>/group.json and <dir>/node-<id>.json for id 1..total, plus <dir>/clients.json (the
+relying parties' public keys, for the gateway) and <dir>/client-<client_id>.json (each one's
+private key).
 When every file is already there, nothing is written and the keys are kept (so a restart
 does not rotate them). When only some are there, the run fails unless --force is given.
 `;
@@ -20,6 +22,7 @@ interface Options {
   out: string | undefined;
   threshold: number;
   total: number;
+  clients: string[];
   force: boolean;
 }
 
@@ -42,7 +45,7 @@ export function main(argv: string[], out: Sink = process.stdout, err: Sink = pro
   }
 
   const dir = path.resolve(options.out);
-  const names = outputFileNames(options.total);
+  const names = outputFileNames(options.total, options.clients);
   const existing = existingOutputFiles(dir, names);
   if (existing === "all" && !options.force) {
     out.write(`distKey: ${names.length} key files already present in ${dir}, keeping them\n`);
@@ -55,7 +58,7 @@ export function main(argv: string[], out: Sink = process.stdout, err: Sink = pro
 
   let keys: DistributedKeys;
   try {
-    keys = distributeKeys(options.threshold, options.total);
+    keys = distributeKeys(options.threshold, options.total, options.clients);
   } catch (e) {
     err.write(`error: ${(e as Error).message}\n`);
     return 1;
@@ -72,6 +75,7 @@ function parseOptions(argv: string[]): Options {
       out: { type: "string" },
       threshold: { type: "string", default: "2" },
       total: { type: "string", default: "3" },
+      clients: { type: "string", default: "demo_client" },
       force: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
@@ -81,6 +85,7 @@ function parseOptions(argv: string[]): Options {
     out: values.out,
     threshold: Number(values.threshold),
     total: Number(values.total),
+    clients: values.clients.split(",").map((id) => id.trim()).filter((id) => id !== ""),
     force: values.force,
   };
 }
@@ -88,7 +93,7 @@ function parseOptions(argv: string[]): Options {
 function summary(dir: string, names: string[], keys: DistributedKeys): string {
   return (
     `distKey: wrote ${names.length} files to ${dir}\n` +
-    `  threshold=${keys.threshold} total=${keys.total}\n` +
+    `  threshold=${keys.threshold} total=${keys.total} clients=${keys.clients.map((c) => c.clientId).join(",")}\n` +
     names.map((n) => `  ${path.join(dir, n)}\n`).join("")
   );
 }

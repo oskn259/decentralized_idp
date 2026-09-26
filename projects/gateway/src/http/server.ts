@@ -10,9 +10,9 @@ import { healthEndpoint } from "./endpoint/health.js";
 import { jwksEndpoint, metadataEndpoint } from "./endpoint/metadata.js";
 import { nodesEndpoint } from "./endpoint/nodes.js";
 import { signOnBody, signOnEndpoint } from "./endpoint/sign-on.js";
-import { tokenEndpoint, tokenForm } from "./endpoint/token.js";
+import { tokenEndpoint, tokenForm, tokenFormError } from "./endpoint/token.js";
 import { uiEndpoint } from "./endpoint/ui.js";
-import { badRequest, invalidRequest, requireJson } from "./validate.js";
+import { badRequest, oauthRefusal, requireJson } from "./validate.js";
 
 export interface ServerOptions {
   /** Directory holding the built login UI: `index.html` and `assets/`. */
@@ -36,14 +36,14 @@ export function createGatewayApp(gateway: Gateway, demo: DemoLog, options: Serve
   app.use("/jwks.json", cors({ origin: options.rpOrigin }));
   app.get("/jwks.json", (c) => jwksEndpoint(gateway.group, c, demo));
   app.get("/authorize", zValidator("query", authorizeQuery, authorizeRefusal(demo)), (c) =>
-    authorizeEndpoint(c.req.valid("query"), c, demo)
+    authorizeEndpoint(gateway, c.req.valid("query"), c, demo)
   );
   app.get("/api/pasta/nodes", (c) => nodesEndpoint(gateway, c));
   app.post("/api/pasta/sign-on", requireJson, zValidator("json", signOnBody, badRequest(demo, "sign-on")), (c) =>
     signOnEndpoint(gateway, c.req.valid("json"), c, demo)
   );
   app.use("/token", cors({ origin: options.rpOrigin, allowHeaders: ["DPoP", "Content-Type"] }));
-  app.post("/token", zValidator("form", tokenForm, invalidRequest(demo, "token")), (c) =>
+  app.post("/token", zValidator("form", tokenForm, oauthRefusal(demo, "token", tokenFormError)), (c) =>
     tokenEndpoint(gateway, c.req.valid("form"), c, demo)
   );
 

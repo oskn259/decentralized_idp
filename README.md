@@ -9,7 +9,7 @@
 - **ブラウザ**でパスワードはブラインドされ、ノードが返す暗号化された署名シェアを復号・合成して**認証アサーション**（= 認可コード）を組み立てる。復号できるのはパスワードを知る者だけ。登録もブラウザが行い、ユーザーごとの TOPRF 鍵を作って分割し、各ノードに直接渡す
 - **gateway** は状態を一切持たない OAuth サーバー。ノードへの中継とシェアの合成だけを行い、シェアの復号も単独署名もできない
 - **node** はグループ署名鍵のシェア `s_i` と、登録で受け取ったユーザーごとの TOPRF シェア `k_i` を持つ。パスワードもトークンも見ない
-- **rp** は DPoP 鍵を持ち、認可コードをその鍵に束縛されたアクセストークンに交換する
+- **rp** は DPoP 鍵とクライアント認証鍵（`private_key_jwt`）を持ち、認可コードをその DPoP 鍵に束縛されたアクセストークンに交換する。gateway は事前登録された RP の公開鍵でこの認証を検証する
 
 読者は FROST、TOPRF、OAuth 2.0、DPoP の基本を知っているものとする。
 
@@ -19,7 +19,7 @@
 |---|---|
 | [`projects/protocol`](projects/protocol) | 規範。ノード API の JSON Schema、テストベクタ、符号化・時間・トークンの規則。コードなし |
 | [`projects/sdk`](projects/sdk) | protocol の TypeScript 実装（`@decentralized-idp/sdk`）。全コンポーネントが使う |
-| [`projects/distKey`](projects/distKey) | 起動前に一度だけ走る trusted dealer。グループ署名鍵を分割して `secrets/` に書く |
+| [`projects/distKey`](projects/distKey) | 起動前に一度だけ走る trusted dealer。グループ署名鍵を分割し、デモ RP のクライアント認証鍵と合わせて `secrets/` に書く |
 | [`projects/node`](projects/node) | アイデンティティノード。`/register` `/commit` `/sign-on` `/sign` |
 | [`projects/gateway`](projects/gateway) | OAuth 認可サーバー。`/authorize` `/token` `/jwks.json` とログインページの配信 |
 | [`projects/idpFront`](projects/idpFront) | ログインページ（gateway が配信） |
@@ -60,7 +60,7 @@ sequenceDiagram
     GW-->>B: そのまま中継
     B->>B: h を復元 → ct_i を復号 → σ = Σz_i → アサーション
     B->>RP: redirect_uri?code=アサーション&state
-    RP->>GW: POST /token (code, DPoP proof)
+    RP->>GW: POST /token (code, DPoP proof, client_assertion)
     GW->>N: /commit ×2 → /sign（アサーションと proof を各ノードが検証）
     N-->>GW: z_i（平文）×2
     GW-->>RP: access_token + refresh_token（どちらも cnf.jkt に束縛）

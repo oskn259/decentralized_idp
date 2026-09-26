@@ -1,5 +1,6 @@
 import { Context } from "hono";
 import { z } from "zod";
+import { Gateway } from "../../domain/usecase/gateway.js";
 import { DemoLog, shortValue } from "../demo-log.js";
 import { problemOf } from "../validate.js";
 
@@ -40,8 +41,15 @@ export function authorizeRefusal(demo: DemoLog) {
  * assertion's nonce and sends the browser on to the login page with everything it needs
  * in the URL. The page mints the assertion and returns to
  * `redirect_uri?code=<assertion>&state=<state>` on its own.
+ *
+ * An unregistered `client_id` gets a 400 and no redirect: its `redirect_uri` is not trusted.
  */
-export function authorizeEndpoint(q: z.infer<typeof authorizeQuery>, c: Context, demo: DemoLog): Response {
+export function authorizeEndpoint(gateway: Gateway, q: z.infer<typeof authorizeQuery>, c: Context, demo: DemoLog): Response {
+  if (!gateway.clients.some((client) => client.clientId === q.client_id)) {
+    const problem = `unknown client_id ${q.client_id}`;
+    demo.reject("authorize", problem);
+    return c.json({ error: "unauthorized_client", error_description: problem }, 400);
+  }
   const challenge = crypto.randomUUID();
   const login = new URLSearchParams({
     step: "login",

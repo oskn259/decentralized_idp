@@ -1,12 +1,14 @@
 import { Commitment, FrostCommitment } from "@decentralized-idp/sdk/frost";
 import { Clock } from "../infra/clock.js";
 import { Node } from "../infra/node.js";
+import { Client } from "../value/client.js";
 import { Group } from "../value/group.js";
 
-/** Everything a use case needs: the group, the nodes, the time. No user state, ever. */
+/** Everything a use case needs: the group, the nodes, the registered clients, the time. No user state, ever. */
 export interface Gateway {
   group: Group;
   nodes: Node[];
+  clients: Client[];
   clock: Clock;
 }
 
