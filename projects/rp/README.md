@@ -4,14 +4,33 @@ RP（relying party）。**普通のOAuthクライアントライブラリだけ*
 
 ## ファイル
 
-- `src/main.ts`: 環境変数を読み、`CLIENT_KEY_FILE`（distKey が書く `client-<client_id>.json`。中身を `CLIENT_KEY_JSON` で直接渡してもよい）の秘密鍵を WebCrypto に取り込み、ウォレットを x402 の支払いに使って起動
-- `src/http/server.ts`: `openid-client` でゲートウェイをディスカバリし、Hono のルート一式（`GET /`・`GET /login`・`GET /callback`・`POST /refresh`）とサインインのセッション表を持つ。セッションは最初 `state` をキーに置き、`/callback` で読んで消してから新しいidをキーに積み直す。どのキーも一度使われたら捨てる
+- `src/oauth.ts`: 普通の OAuth クライアント。`createOAuthClient` がディスカバリし、`startLogin`・`exchangeCode`・`refresh`・`verify` を返す。DAuth 固有のことは何も書いていない
+- `src/x402.ts`: x402 の支払い。`payWith` が `openid-client` の fetch を支払い付きの fetch に差し替える
+- `src/http/server.ts`: Hono のルート一式（`GET /`・`GET /login`・`GET /callback`・`POST /refresh`）とサインインのセッション表。セッションは最初 `state` をキーに置き、`/callback` で読んで消してから新しいidをキーに積み直す。どのキーも一度使われたら捨てる
+- `src/http/pages.ts`: HTML のテンプレート。OAuth の処理は持たない
+- `src/main.ts`: 環境変数を読み、`CLIENT_KEY_FILE`（distKey が書く `client-<client_id>.json`。中身を `CLIENT_KEY_JSON` で直接渡してもよい）の鍵でクライアントを作り、ウォレットで `payWith` してから起動
+
+## x402 はこれだけ
+
+サービスがやることは、普通の OAuth クライアントを作ったあとに支払い付きの fetch を差し込むことだけ。トークンエンドポイントが 402 を返すと、ラッパーが USDC の支払い（EIP-3009 の署名）を添えて再送する。OAuth クライアントは 402 を知らない。
+
+```ts
+const payer = new x402Client().register(wallet.network, new ExactEvmScheme(privateKeyToAccount(wallet.privateKey)));
+config[oauth.customFetch] = wrapFetchWithPayment(fetch, payer) as oauth.CustomFetch;
+```
+
+`main.ts` では次の2行が並ぶ。
+
+```ts
+const client = await createOAuthClient({ issuer: gatewayUrl, clientId, clientKey, redirectUri, scope });
+payWith(client.config, { privateKey: wallet.privateKey, network });
+```
 
 ## 流れ
 
 1. `GET /login`: 新しい `state` とDPoP鍵ペア（EdDSA、`randomDPoPKeyPair` + `getDPoPHandle`）を作ってセッション表に控え、鍵のサムプリントを `dpop_jkt` としてクエリに乗せ、ゲートウェイの認可エンドポイントへ302（`buildAuthorizationUrl`）
 2. ブラウザはゲートウェイが返すログインページに送られ、そこでの認証が認可コードになる
-3. `GET /callback?code&state`: `state` をセッション表から引いて消費し、`authorizationCodeGrant` が `code` をDPoPプルーフと `client_assertion`（自分の鍵で署名した短命の JWT）付きでトークンエンドポイントへ送る。`client_assertion` は `openid-client` の `PrivateKeyJwt` が作る。ゲートウェイが 402 を返したら、`openid-client` の fetch を包んだ x402 ラッパーが USDC の支払い（EIP-3009 の署名）を添えて再送する。RP のコードは 402 を意識しない
+3. `GET /callback?code&state`: `state` をセッション表から引いて消費し、`authorizationCodeGrant` が `code` をDPoPプルーフと `client_assertion`（自分の鍵で署名した短命の JWT）付きでトークンエンドポイントへ送る。`client_assertion` は `openid-client` の `PrivateKeyJwt` が作る。402 は `x402.ts` が差し込んだ fetch が払う
 4. 受け取ったアクセストークンを `jwtVerify` で検証し、`sub`・`scope`・`exp` を表示する
 5. 表示ページの Refresh は `POST /refresh`。保存しておいたリフレッシュトークンとDPoPハンドルを `refreshTokenGrant` に渡し、同じ検証・表示を繰り返す
 
@@ -33,6 +52,7 @@ RP（relying party）。**普通のOAuthクライアントライブラリだけ*
 | `RP_URL` | `http://localhost:<PORT>` | 自身の公開URL。`redirect_uri` は `<RP_URL>/callback` |
 | `CLIENT_ID` | `demo_client` | OAuthの `client_id` |
 | `SCOPE` | `profile` | OAuthの `scope` |
+| `NETWORK` | `eip155:84532` | ウォレットが支払うチェーン（CAIP-2） |
 
 ## 検証の分担
 
