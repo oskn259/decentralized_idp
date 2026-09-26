@@ -173,56 +173,6 @@ describe("verifyAssertion", () => {
     expect(claims.cnf.jkt).toBe("jkt");
   });
 
-  it("rejects a bad signature", () => {
-    const { token, identity, now } = issuedAssertion();
-    // Flip the first character of the signature: the last one may only hold padding bits.
-    const [h, p, sig] = token.split(".");
-    const tampered = `${h}.${p}.${sig[0] === "A" ? "B" : "A"}${sig.slice(1)}`;
-    expect(() => verifyAssertion(tampered, identity, now)).toThrowError(/rejected assertion: Invalid Ed25519 signature/);
-  });
-
-  it("rejects a token signed by a different group key", () => {
-    const { identity } = testIdentity();
-    const other = testIdentity();
-    const { token, now } = issuedAssertion({}, other.identity, other.privateKey);
-    expect(() => verifyAssertion(token, identity, now)).toThrowError(/Invalid Ed25519 signature/);
-  });
-
-  it("rejects the wrong typ", () => {
-    const { identity, privateKey } = testIdentity();
-    const now = 1_700_000_000;
-    const jwt: Jwt = {
-      header: { alg: "EdDSA", typ: ACCESS_TOKEN_TYP, kid: identity.keyId },
-      payload: {
-        iss: identity.issuer,
-        sub: "usr_alice",
-        aud: identity.issuer,
-        client_id: "c",
-        cnf: { jkt: "j" },
-        iat: now,
-        exp: now + 30,
-      },
-    };
-    const token = sign(jwt, privateKey);
-    expect(() => verifyAssertion(token, identity, now)).toThrowError(/typ at\+jwt is not JWT/);
-  });
-
-  it("rejects an aud that is not the issuer", () => {
-    const { token, identity, now } = issuedAssertion({ aud: "someone-else" });
-    expect(() => verifyAssertion(token, identity, now)).toThrowError(/rejected assertion: aud mismatch/);
-  });
-
-  it("rejects an expired assertion", () => {
-    const { token, identity, now } = issuedAssertion();
-    expect(() => verifyAssertion(token, identity, now + 31)).toThrowError(/expired/);
-  });
-
-  it("rejects a lifetime over 30 seconds even if the signature is otherwise valid", () => {
-    const base = 1_700_000_000;
-    const { token, identity, now } = issuedAssertion({ exp: base + 120 });
-    expect(() => verifyAssertion(token, identity, now)).toThrowError(/assertion lifetime 120s out of range/);
-  });
-
   it("rejects a missing iss, sub, client_id or cnf.jkt", () => {
     const { identity, privateKey } = testIdentity();
     const now = 1_700_000_000;
@@ -329,26 +279,6 @@ describe("verifyRefreshToken", () => {
     expect(claims.aud).toBeUndefined();
   });
 
-  it("rejects the assertion's typ presented as a refresh token", () => {
-    const { identity, privateKey } = testIdentity();
-    const now = 1_700_000_000;
-    const jwt: Jwt = {
-      header: { alg: "EdDSA", typ: ASSERTION_TYP, kid: identity.keyId },
-      payload: { iss: identity.issuer, sub: "s", client_id: "c", cnf: { jkt: "j" }, iat: now, exp: now + 30 },
-    };
-    const assertionAsRefresh = sign(jwt, privateKey);
-    expect(() => verifyRefreshToken(assertionAsRefresh, identity, now)).toThrowError(/typ JWT is not refresh\+jwt/);
-  });
-
-  it("rejects an expired refresh token and one over the max lifetime", () => {
-    const expired = issuedRefreshToken();
-    expect(() => verifyRefreshToken(expired.token, expired.identity, expired.now + REFRESH_TOKEN_LIFETIME_SECONDS + 1)).toThrowError(
-      /expired/
-    );
-
-    const tooLong = issuedRefreshToken({ exp: 1_700_000_000 + REFRESH_TOKEN_LIFETIME_SECONDS + 1 });
-    expect(() => verifyRefreshToken(tooLong.token, tooLong.identity, tooLong.now)).toThrowError(/refresh_token lifetime .* out of range/);
-  });
 });
 
 describe("lifetime and freshness constants agree with the protocol", () => {

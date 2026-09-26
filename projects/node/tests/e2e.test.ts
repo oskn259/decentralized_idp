@@ -241,7 +241,7 @@ describe("access token over HTTP", () => {
     expect(payload.cnf).toEqual({ jkt: session.cnfJkt });
   });
 
-  it("rejects another DPoP key, another htu, and an over-long access token lifetime", async () => {
+  it("rejects another DPoP key, another htu, a stale proof, and an over-long access token lifetime", async () => {
     const session = await liveSession();
 
     const wrongKey = await prepare({ nodes: [nodes[0]], session, keyPairOverride: newDPoPKeyPair().keyPair });
@@ -253,6 +253,11 @@ describe("access token over HTTP", () => {
     const wrongHtuRes = await postJson(nodes[0].url, "/sign", signBody(wrongHtu));
     expect(wrongHtuRes.status).toBe(400);
     expect(wrongHtuRes.body.error).toContain("htu mismatch");
+
+    const stale = await prepare({ nodes: [nodes[0]], session, dpopIatOverride: clock.nowSeconds() - 120 });
+    const staleRes = await postJson(nodes[0].url, "/sign", signBody(stale));
+    expect(staleRes.status).toBe(400);
+    expect(staleRes.body.error).toContain("timestamp expired or out of allowed window");
 
     const tooLong = await prepare({ nodes: [nodes[0]], session, lifetimeSeconds: 3601 });
     const tooLongRes = await postJson(nodes[0].url, "/sign", signBody(tooLong));
@@ -309,6 +314,10 @@ describe("refresh grant over HTTP", () => {
       cnf: { jkt: session.cnfJkt },
     });
     expect(decodeJwt(second.access_token).payload.exp - decodeJwt(second.access_token).payload.iat).toBe(900);
+
+    // The old refresh token still spends: the node keeps no revocation state.
+    const third = await sign({ nodes, session, grant: "refresh_token", refreshToken: first.refresh_token, lifetimeSeconds: 900 });
+    expect(verifyToken(third.access_token)).toBe(true);
   });
 
   it("refuses a proof from another key: it does not match the refresh token's cnf.jkt", async () => {

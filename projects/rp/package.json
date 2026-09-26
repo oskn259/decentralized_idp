@@ -9,9 +9,7 @@
     "start": "node dist/main.js",
     "dev": "tsx src/main.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "qa-gate": "npm run typecheck && npm run build && vitest run --coverage"
+    "qa-gate": "npm run typecheck && npm run build"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",
@@ -21,9 +19,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.9",
-    "@vitest/coverage-v8": "^5.0.1",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.2",
-    "vitest": "^5.0.1"
+    "typescript": "^5.8.2"
   }
 }

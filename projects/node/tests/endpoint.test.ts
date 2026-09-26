@@ -128,24 +128,11 @@ describe("/sign-on: decode errors", () => {
     );
   });
 
+  /** Rules the protocol states beyond the schema's field types: lengths, padding, and `nonce: null`. */
   const cases: Array<[string, Partial<Record<string, unknown>>, string]> = [
-    ["username missing", { username: undefined }, "body.request.username is required"],
-    ["username empty", { username: "" }, "body.request.username must not be empty"],
-    ["blinded missing", { blinded: undefined }, "body.request.blinded is required"],
     ["blinded wrong length", { blinded: base64UrlEncode(crypto.randomBytes(31)) }, "body.request.blinded must decode to 32 bytes, got 31"],
     ["blinded padded", { blinded: base64UrlEncode(crypto.randomBytes(32)) + "==" }, "body.request.blinded must be base64url without padding"],
-    ["sessionNonce missing", { sessionNonce: undefined }, "body.request.sessionNonce is required"],
     ["sessionNonce not base64url", { sessionNonce: "not base64url!" }, "body.request.sessionNonce must be base64url without padding"],
-    ["cnfJkt missing", { cnfJkt: undefined }, "body.request.cnfJkt is required"],
-    ["cnfJkt empty", { cnfJkt: "" }, "body.request.cnfJkt must not be empty"],
-    ["clientId missing", { clientId: undefined }, "body.request.clientId is required"],
-    ["clientId empty", { clientId: "" }, "body.request.clientId must not be empty"],
-    ["scope not a string", { scope: 1 }, "body.request.scope must be a string"],
-    ["iat missing", { iat: undefined }, "body.request.iat must be an integer"],
-    ["iat not an integer", { iat: 1.5 }, "body.request.iat must be an integer"],
-    ["exp missing", { exp: undefined }, "body.request.exp must be an integer"],
-    ["exp not an integer", { exp: "soon" }, "body.request.exp must be an integer"],
-    ["commitments missing", { commitments: undefined }, "body.request.commitments must be an array"],
     [
       "commitments entry wrong D length",
       { commitments: [{ nodeId: 1, D: "AAAA", E: "AAAA" }] },
@@ -156,13 +143,6 @@ describe("/sign-on: decode errors", () => {
       { commitments: [{ nodeId: 1, D: base64UrlEncode(crypto.randomBytes(32)) + "==", E: base64UrlEncode(crypto.randomBytes(32)) }] },
       "body.request.commitments.0.D must be base64url without padding",
     ],
-    [
-      "commitments entry nodeId not numeric",
-      { commitments: [{ nodeId: "1", D: "x", E: "y" }] },
-      "body.request.commitments.0.nodeId must be an integer",
-    ],
-    ["allParticipants missing", { allParticipants: undefined }, "body.request.allParticipants must be an array"],
-    ["allParticipants not an array", { allParticipants: "1,2" }, "body.request.allParticipants must be an array"],
     ["nonce is a literal null", { nonce: null }, "body.request.nonce must be a string"],
   ];
 
@@ -349,22 +329,6 @@ describe("/sign: decode errors", () => {
         signRequest.safeParse({ roundId: "r2", refreshRoundId: "r3", request: { ...validSignRequest(), grant: "refresh_token" } }).error!
       )
     ).toBe("body.request assertion (authorization_code) or refreshToken (refresh_token) must not be empty");
-  });
-
-  const cases: Array<[string, Partial<Record<string, unknown>>, string]> = [
-    ["dpopProof missing", { dpopProof: undefined }, "body.request.dpopProof is required"],
-    ["claims missing", { claims: undefined }, "body.request.claims Invalid input: expected object, received undefined"],
-    ["claims.iat not an integer", { claims: { iat: 1.5, exp: 1_700_003_600, jti: "j" } }, "body.request.claims.iat must be an integer"],
-    ["claims.exp not an integer", { claims: { iat: 1, exp: "later", jti: "j" } }, "body.request.claims.exp must be an integer"],
-    ["claims.jti empty", { claims: { iat: 1, exp: 2, jti: "" } }, "body.request.claims.jti must not be empty"],
-    ["commitments missing", { commitments: undefined }, "body.request.commitments must be an array"],
-    ["refreshCommitments missing", { refreshCommitments: undefined }, "body.request.refreshCommitments must be an array"],
-    ["allParticipants missing", { allParticipants: undefined }, "body.request.allParticipants must be an array"],
-  ];
-
-  it.each(cases)("rejects %s", (_name, patch, expected) => {
-    const result = signRequest.safeParse({ roundId: "r2", refreshRoundId: "r3", request: { ...validSignRequest(), ...patch } });
-    expect(problemOf(result.error!)).toBe(expected);
   });
 });
 

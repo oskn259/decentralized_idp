@@ -1,6 +1,6 @@
 import { Browser, Page, chromium } from "playwright";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { GATEWAY_URL, RP_URL, SCOPE, restore, stopNode, up } from "./helpers/compose.js";
+import { GATEWAY_URL, RP_URL, SCOPE, logs, restore, stopNode, up } from "./helpers/compose.js";
 
 /**
  * A person at the relying party's page, in Chromium, against the containers. One path is
@@ -72,6 +72,8 @@ describe("alice at the relying party", () => {
     const replay = await page.goto(callbackUrl);
     expect(replay?.status()).toBe(400);
     expect(await page.locator("body").innerText()).toContain("unknown state");
+
+    expect(logs()).not.toContain("password123");
   });
 
   it("is refused with a wrong password, in the browser, before anything reaches the relying party", async () => {

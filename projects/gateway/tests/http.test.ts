@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { base64UrlEncode } from "@decentralized-idp/sdk/base64url";
 import { calculateJwkThumbprint, createDPoPProof, exportDPoPJwk, generateDPoPKeyPair } from "@decentralized-idp/sdk/dpop";
-import { assembleJwt, createSigningInput } from "@decentralized-idp/sdk/jwt";
+import { assembleJwt, createSigningInput, decodeJwt } from "@decentralized-idp/sdk/jwt";
 import { assertionJwt } from "@decentralized-idp/sdk/tokens";
 import { Gateway } from "../src/domain/usecase/gateway.js";
 import { createDemoLog } from "../src/http/demo-log.js";
@@ -16,8 +16,9 @@ import { TempDist, makeTempDist } from "./helpers/temp-dist.js";
 
 /**
  * The HTTP surface the gateway itself owns, against fake `Node`s: routing, refusals,
- * metadata and JWKS content, CORS, the static login page. Sign-on and token success paths
- * run against real nodes in e2e.test.ts.
+ * metadata and JWKS content, CORS, the static login page, and what the gateway does with
+ * the nodes' answers (exclusion, quorum, error codes). Real nodes and real signatures are
+ * `../e2e`'s job.
  */
 
 const RP_ORIGIN = "http://localhost:5173";
@@ -331,6 +332,28 @@ describe("POST /api/pasta/sign-on", () => {
   });
 });
 
+const NOW = 1_700_000_000;
+
+/** An assertion for a fresh DPoP key, and a proof from that key. The gateway never verifies the signature, so any 64 bytes serve. */
+function clientCredential(): { credential: string; proof: string; jkt: string; foreignProof: string } {
+  const keyPair = generateDPoPKeyPair();
+  const jkt = calculateJwkThumbprint(exportDPoPJwk(keyPair.publicKey));
+  const jwt = assertionJwt({ issuer: ISSUER, keyId: "pasta-group-key-1" }, "usr_test", {
+    clientId: "demo_client",
+    scope: "openid",
+    cnfJkt: jkt,
+    iat: NOW,
+    exp: NOW + 30,
+  });
+  const { headerB64, payloadB64 } = createSigningInput(jwt);
+  return {
+    credential: assembleJwt(headerB64, payloadB64, new Uint8Array(64)),
+    proof: createDPoPProof(keyPair, "POST", `${ISSUER}/token`, NOW),
+    jkt,
+    foreignProof: createDPoPProof(generateDPoPKeyPair(), "POST", `${ISSUER}/token`, NOW),
+  };
+}
+
 async function postToken(form: Record<string, string>, dpop?: string): Promise<Response> {
   const body = new URLSearchParams(form);
   const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded" };
@@ -389,6 +412,145 @@ describe("POST /token", () => {
   });
 });
 
+describe("POST /api/pasta/sign-on across the nodes", () => {
+  const VALID = {
+    username: "alice",
+    blinded: base64UrlEncode(new Uint8Array(32).fill(1)),
+    sessionNonce: base64UrlEncode(new Uint8Array(16).fill(2)),
+    cnfJkt: "jkt",
+    clientId: "demo_client",
+    scope: "openid",
+    nonce: "n1",
+    iat: 1,
+    exp: 31,
+  };
+
+  async function signOn(): Promise<Response> {
+    return fetch(`${server!.url}/api/pasta/sign-on`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(VALID),
+    });
+  }
+
+  it("excludes a node that fails round 1, keeps participants ascending, and sends that set to round 2", async () => {
+    // `nodes` is deliberately unsorted: the ascending order must be the gateway's own.
+    const nodes = [new FakeNode(3), new FakeNode(1), new FakeNode(2, { commitFails: true })];
+    server = await startTestServer(nodes, dist);
+
+    const res = await signOn();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.commitments.map((c: { nodeId: number }) => c.nodeId)).toEqual([1, 3]);
+    expect(body.shares.map((s: { nodeId: number }) => s.nodeId)).toEqual([1, 3]);
+
+    const [node3, node1, node2] = nodes;
+    expect(node1.signOnCalls[0].allParticipants).toEqual([1, 3]);
+    expect(node1.signOnCalls[0].commitments.map((c) => c.nodeId)).toEqual([1, 3]);
+    expect(node3.signOnCalls).toHaveLength(1);
+    expect(node2.commitCalls).toHaveLength(1);
+    expect(node2.signOnCalls).toHaveLength(0);
+    expect(server.logLines.some((l) => l.includes("(node2 unreachable, excluded)"))).toBe(true);
+  });
+
+  it("400s with the documented quorum message, naming every unreachable node, when two of three are down", async () => {
+    server = await startTestServer([new FakeNode(1), new FakeNode(2, { commitFails: true }), new FakeNode(3, { commitFails: true })], dist);
+    const res = await signOn();
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("quorum 1 < 2 (node2, node3 unreachable)");
+    expect(server.logLines.some((l) => l.includes("✖ sign-on rejected: quorum 1 < 2"))).toBe(true);
+  });
+});
+
+describe("POST /token across the nodes", () => {
+  it("answers the token set aggregated from every node's share, bound to the code's DPoP key", async () => {
+    server = await startTestServer([new FakeNode(1), new FakeNode(2), new FakeNode(3)], dist);
+    const { credential, proof, jkt } = clientCredential();
+
+    const res = await postToken({ grant_type: "authorization_code", code: credential }, proof);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.token_type).toBe("DPoP");
+    expect(body.expires_in).toBe(3600);
+    expect(body.scope).toBe("openid");
+
+    const at = decodeJwt(body.access_token);
+    expect(at.header.typ).toBe("at+jwt");
+    expect(at.payload.aud).toBe("demo_client");
+    expect(at.payload.cnf).toEqual({ jkt });
+    expect((at.payload.exp as number) - (at.payload.iat as number)).toBe(3600);
+    const rt = decodeJwt(body.refresh_token);
+    expect(rt.header.typ).toBe("refresh+jwt");
+    expect(rt.payload.cnf).toEqual({ jkt });
+    expect(server.logLines.some((l) => l.includes("→ 2×/commit ×3 → /sign → access_token"))).toBe(true);
+  });
+
+  it("relays a refresh_token grant to the nodes as such", async () => {
+    const nodes = [new FakeNode(1), new FakeNode(2), new FakeNode(3)];
+    server = await startTestServer(nodes, dist);
+    const { credential, proof } = clientCredential();
+
+    const res = await postToken({ grant_type: "refresh_token", refresh_token: credential }, proof);
+    expect(res.status).toBe(200);
+    expect(nodes[0].signCalls[0].grant).toBe("refresh_token");
+  });
+
+  it("excludes a node that fails round 1 and still answers while quorum holds", async () => {
+    const nodes = [new FakeNode(1), new FakeNode(2, { commitFails: true }), new FakeNode(3)];
+    server = await startTestServer(nodes, dist);
+    const { credential, proof } = clientCredential();
+
+    const res = await postToken({ grant_type: "authorization_code", code: credential }, proof);
+    expect(res.status).toBe(200);
+    expect(nodes[0].signCalls[0].allParticipants).toEqual([1, 3]);
+    expect(nodes[1].signCalls).toHaveLength(0);
+    expect(server.logLines.some((l) => l.includes("(node2 unreachable, excluded)"))).toBe(true);
+  });
+
+  it("400 invalid_grant for a code that is not a JWT", async () => {
+    server = await startTestServer([new FakeNode(1), new FakeNode(2), new FakeNode(3)], dist);
+    const { proof } = clientCredential();
+    const res = await postToken({ grant_type: "authorization_code", code: "not-a-jwt" }, proof);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("invalid_grant");
+    expect(body.error_description).toContain("credential:");
+  });
+
+  it("400 invalid_dpop_proof for a proof from another key, before any round is opened", async () => {
+    const nodes = [new FakeNode(1), new FakeNode(2), new FakeNode(3)];
+    server = await startTestServer(nodes, dist);
+    const { credential, foreignProof } = clientCredential();
+
+    const res = await postToken({ grant_type: "authorization_code", code: credential }, foreignProof);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("invalid_dpop_proof");
+    for (const node of nodes) expect(node.commitCalls).toEqual([]);
+  });
+
+  it("400 invalid_grant carrying the node's reason when a node refuses to sign", async () => {
+    server = await startTestServer([new FakeNode(1), new FakeNode(2, { signFails: "node 2 rejects: bad credential" }), new FakeNode(3)], dist);
+    const { credential, proof } = clientCredential();
+
+    const res = await postToken({ grant_type: "authorization_code", code: credential }, proof);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("invalid_grant");
+    expect(body.error_description).toContain("node 2 rejects: bad credential");
+  });
+
+  it("400 invalid_grant when quorum is lost", async () => {
+    server = await startTestServer([new FakeNode(1), new FakeNode(2, { commitFails: true }), new FakeNode(3, { commitFails: true })], dist);
+    const { credential, proof } = clientCredential();
+
+    const res = await postToken({ grant_type: "authorization_code", code: credential }, proof);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("invalid_grant");
+    expect(body.error_description).toContain("quorum 1 < 2");
+  });
+});
+
 describe("POST /token with a corrupt commitment", () => {
   beforeEach(async () => {
     server = await startTestServer([new FakeNode(1), new FakeNode(2, { commitCorrupt: true }), new FakeNode(3)], dist);
@@ -397,19 +559,7 @@ describe("POST /token with a corrupt commitment", () => {
   it("400 invalid_request when a node's commitment cannot be aggregated (not an OAuthError)", async () => {
     // A commitment that is not a curve point makes the aggregation itself throw a plain
     // Error, which is not one of the failures issueTokens maps to an OAuthError.
-    const keyPair = generateDPoPKeyPair();
-    const jkt = calculateJwkThumbprint(exportDPoPJwk(keyPair.publicKey));
-    const jwt = assertionJwt({ issuer: ISSUER, keyId: "pasta-group-key-1" }, "usr_test", {
-      clientId: "demo_client",
-      scope: "openid",
-      cnfJkt: jkt,
-      iat: 1_700_000_000,
-      exp: 1_700_000_030,
-    });
-    const { headerB64, payloadB64 } = createSigningInput(jwt);
-    const credential = assembleJwt(headerB64, payloadB64, new Uint8Array(64));
-    const proof = createDPoPProof(keyPair, "POST", `${ISSUER}/token`, 1_700_000_000);
-
+    const { credential, proof } = clientCredential();
     const res = await postToken({ grant_type: "authorization_code", code: credential }, proof);
     expect(res.status).toBe(400);
     const body = await res.json();
