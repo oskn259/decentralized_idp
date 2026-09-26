@@ -1,7 +1,7 @@
 import { x402Facilitator } from "@x402/core/facilitator";
 import { decodePaymentSignatureHeader, encodePaymentRequiredHeader, encodePaymentResponseHeader } from "@x402/core/http";
 import type { Network, PaymentPayload, PaymentRequired, PaymentRequirements, SettleResponse } from "@x402/core/types";
-import { toFacilitatorEvmSigner } from "@x402/evm";
+import { eip3009ABI, toFacilitatorEvmSigner } from "@x402/evm";
 import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
 import { createWalletClient, http, publicActions } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -50,7 +50,8 @@ const CHAINS = { "eip155:84532": baseSepolia, "eip155:8453": base } as const;
 /** The payee as its own x402 facilitator: `privateKey` pays the gas of `transferWithAuthorization`. */
 export function evmSettler(network: keyof typeof CHAINS, rpcUrl: string, privateKey: `0x${string}`): Settler {
   const account = privateKeyToAccount(privateKey);
-  const wallet = createWalletClient({ account, chain: CHAINS[network], transport: http(rpcUrl) }).extend(publicActions);
+  // Public RPCs answer 429 under load; retry longer than viem's default before giving up.
+  const wallet = createWalletClient({ account, chain: CHAINS[network], transport: http(rpcUrl, { retryCount: 6, retryDelay: 500 }) }).extend(publicActions);
   // viem's parameter types are stricter than the signer interface; the calls are the same.
   const signer = toFacilitatorEvmSigner({
     address: account.address,
@@ -62,13 +63,27 @@ export function evmSettler(network: keyof typeof CHAINS, rpcUrl: string, private
     getCode: (args) => wallet.getCode(args),
   });
   const facilitator = new x402Facilitator().register(network, new ExactEvmScheme(signer));
+
+  /** EIP-3009: an authorization the token contract has already consumed was paid, whatever the RPC said afterwards. */
+  async function alreadyPaid(payment: PaymentPayload, requirements: PaymentRequirements): Promise<boolean> {
+    const authorization = (payment.payload as { authorization?: { from?: `0x${string}`; nonce?: `0x${string}` } }).authorization;
+    if (!authorization?.from || !authorization.nonce) return false;
+    const used = await wallet.readContract({ address: requirements.asset as `0x${string}`, abi: eip3009ABI, functionName: "authorizationState", args: [authorization.from, authorization.nonce] }).catch(() => false);
+    return used === true;
+  }
+
   return {
     async settle(payment, requirements) {
       const verified = await facilitator.verify(payment, requirements);
       if (!verified.isValid) {
         return { success: false, errorReason: verified.invalidReason, errorMessage: verified.invalidMessage, transaction: "", network };
       }
-      return facilitator.settle(payment, requirements);
+      // A transaction can be mined while the RPC fails to report it; the payment must not be lost then.
+      const settled = await facilitator.settle(payment, requirements).catch((err) => ({ success: false, errorMessage: String(err), transaction: "", network }) as SettleResponse);
+      if (!settled.success && (await alreadyPaid(payment, requirements))) {
+        return { success: true, transaction: "", network, payer: verified.payer };
+      }
+      return settled;
     },
   };
 }

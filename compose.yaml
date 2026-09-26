@@ -10,6 +10,8 @@
 x-issuer: &issuer http://localhost:3000
 # Requests bought per payment. Small, so a demo or a CI run spends little testnet USDC per batch.
 x-credit-batch: &credit-batch "10"
+# The chain RPC the payees settle through. Override with a dedicated provider where the public one rate-limits.
+x-rpc-url: &rpc-url ${RPC_URL:-https://sepolia.base.org}
 
 services:
   distkey:
@@ -22,20 +24,20 @@ services:
   # under the PUBLIC_URL it names in /health.
   node1: &node
     build: { context: ., dockerfile: projects/node/Dockerfile }
-    environment: { NODE_CONFIG: /secrets/node-1.json, ISSUER: *issuer, PUBLIC_URL: http://localhost:4001, CREDIT_BATCH: *credit-batch }
+    environment: { NODE_CONFIG: /secrets/node-1.json, ISSUER: *issuer, PUBLIC_URL: http://localhost:4001, CREDIT_BATCH: *credit-batch, RPC_URL: *rpc-url }
     ports: ["4001:4000"]
     volumes: ["./secrets:/secrets:ro", "node1-data:/data"]
     depends_on: { distkey: { condition: service_completed_successfully } }
 
   node2:
     <<: *node
-    environment: { NODE_CONFIG: /secrets/node-2.json, ISSUER: *issuer, PUBLIC_URL: http://localhost:4002, CREDIT_BATCH: *credit-batch }
+    environment: { NODE_CONFIG: /secrets/node-2.json, ISSUER: *issuer, PUBLIC_URL: http://localhost:4002, CREDIT_BATCH: *credit-batch, RPC_URL: *rpc-url }
     ports: ["4002:4000"]
     volumes: ["./secrets:/secrets:ro", "node2-data:/data"]
 
   node3:
     <<: *node
-    environment: { NODE_CONFIG: /secrets/node-3.json, ISSUER: *issuer, PUBLIC_URL: http://localhost:4003, CREDIT_BATCH: *credit-batch }
+    environment: { NODE_CONFIG: /secrets/node-3.json, ISSUER: *issuer, PUBLIC_URL: http://localhost:4003, CREDIT_BATCH: *credit-batch, RPC_URL: *rpc-url }
     ports: ["4003:4000"]
     volumes: ["./secrets:/secrets:ro", "node3-data:/data"]
 
@@ -48,6 +50,7 @@ services:
       NODE_URLS: http://node1:4000,http://node2:4000,http://node3:4000
       RP_ORIGIN: http://localhost:3001
       CREDIT_BATCH: *credit-batch
+      RPC_URL: *rpc-url
     volumes: ["./secrets:/secrets:ro", "gateway-data:/data"]
     ports: ["3000:3000", "3001:3001"]
     depends_on:
