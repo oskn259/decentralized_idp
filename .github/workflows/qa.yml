@@ -1,0 +1,31 @@
+# The same gate as `npm run qa-gate` locally, browser e2e against docker compose included.
+# The e2e pays on Base Sepolia, so the funded key files come from the E2E_SECRETS secret
+# (`tar -czf - -C secrets . | base64`) and runs are serialized: one wallet, one payer at a time.
+name: qa
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: e2e-wallets
+  cancel-in-progress: false
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # The containers run as uid 1000 and read these; distKey keeps a complete set as it is.
+      - run: mkdir -p secrets && echo "$E2E_SECRETS" | base64 -d | tar -xz -C secrets && chmod -R a+rX secrets
+        env:
+          E2E_SECRETS: ${{ secrets.E2E_SECRETS }}
+      - run: npm run qa-gate
+      - if: failure()
+        run: docker compose logs --no-color | tail -80
