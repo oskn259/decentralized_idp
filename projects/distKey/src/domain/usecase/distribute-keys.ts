@@ -38,10 +38,10 @@ export interface DistributedKeys {
 
 /**
  * The trusted dealer's job: one group signing key split t-of-n (node i gets s_i, everyone
- * gets Y), and, for the demo, the identities money and authentication need: a key pair and a
- * wallet for each relying party, for the gateway, and a wallet for each node. The dealer is
- * the only party that sees the whole group key and every share. Users register themselves
- * later, from the browser.
+ * gets Y), and, for the demo, each party's accounts: a key pair for private_key_jwt and a
+ * wallet for x402 for every relying party and the gateway, a wallet for every node. The
+ * dealer is the only party that sees the whole group key and every share. Users register
+ * themselves later, from the browser.
  */
 export function distributeKeys(threshold: number, total: number, clientIds: string[]): DistributedKeys {
   const groupSecret = randomScalar();
