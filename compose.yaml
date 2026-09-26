@@ -15,19 +15,27 @@ services:
     command: ["--out", "/secrets"]
     volumes: ["./secrets:/secrets"]
 
+  # Each node keeps the users it registered in its own volume; the key files stay read-only.
+  # The browser registers with the nodes directly, so each one is published on the host
+  # under the PUBLIC_URL it names in /health.
   node1: &node
     build: { context: ., dockerfile: projects/node/Dockerfile }
-    environment: { NODE_CONFIG: /secrets/node-1.json, ISSUER: *issuer }
-    volumes: ["./secrets:/secrets:ro"]
+    environment: { NODE_CONFIG: /secrets/node-1.json, ISSUER: *issuer, PUBLIC_URL: http://localhost:4001 }
+    ports: ["4001:4000"]
+    volumes: ["./secrets:/secrets:ro", "node1-data:/data"]
     depends_on: { distkey: { condition: service_completed_successfully } }
 
   node2:
     <<: *node
-    environment: { NODE_CONFIG: /secrets/node-2.json, ISSUER: *issuer }
+    environment: { NODE_CONFIG: /secrets/node-2.json, ISSUER: *issuer, PUBLIC_URL: http://localhost:4002 }
+    ports: ["4002:4000"]
+    volumes: ["./secrets:/secrets:ro", "node2-data:/data"]
 
   node3:
     <<: *node
-    environment: { NODE_CONFIG: /secrets/node-3.json, ISSUER: *issuer }
+    environment: { NODE_CONFIG: /secrets/node-3.json, ISSUER: *issuer, PUBLIC_URL: http://localhost:4003 }
+    ports: ["4003:4000"]
+    volumes: ["./secrets:/secrets:ro", "node3-data:/data"]
 
   gateway:
     build: { context: ., dockerfile: projects/gateway/Dockerfile }
@@ -47,3 +55,8 @@ services:
     environment: { GATEWAY_URL: *issuer, RP_URL: http://localhost:3001 }
     network_mode: "service:gateway"
     depends_on: { gateway: { condition: service_healthy } }
+
+volumes:
+  node1-data:
+  node2-data:
+  node3-data:

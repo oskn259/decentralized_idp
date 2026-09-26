@@ -41,14 +41,16 @@ base64url のデコーダは、アルファベット外の文字（`=`、`+`、`
 
 | メソッド | パス | 内容 | リクエスト | レスポンス |
 |---|---|---|---|---|
-| GET | `/health` | 稼働確認とグループ公開鍵 | なし | [`health.response.json`](schema/node-api/health.response.json) |
+| GET | `/health` | 稼働確認、グループ公開鍵、ブラウザ向けの自分の URL | なし | [`health.response.json`](schema/node-api/health.response.json) |
+| POST | `/register` | 新しいユーザーのこのノード向けシェアを、ブラウザから直接受け取る | [`register.request.json`](schema/node-api/register.request.json) | [`register.response.json`](schema/node-api/register.response.json) |
 | POST | `/commit` | FROST ラウンド 1 を開く | [`commit.request.json`](schema/node-api/commit.request.json) | [`commit.response.json`](schema/node-api/commit.response.json) |
 | POST | `/sign-on` | TOPRF 評価と、認証アサーションへの FROST ラウンド 2 | [`sign-on.request.json`](schema/node-api/sign-on.request.json) | [`sign-on.response.json`](schema/node-api/sign-on.response.json) |
 | POST | `/sign` | アクセストークンとリフレッシュトークンへの FROST ラウンド 2 | [`sign.request.json`](schema/node-api/sign.request.json) | [`sign.response.json`](schema/node-api/sign.response.json) |
 
 スキーマが表せない制約:
 
-- `groupPublicKey`、`D`、`E`、`blinded`、`toprfPartial` はデコードして 32 バイトでなければならない。`blinded` と `toprfPartial` は ristretto255 の正準表現、その他は Ed25519 の点
+- `groupPublicKey`、`D`、`E`、`blinded`、`toprfPartial` はデコードして 32 バイトでなければならない。`blinded` と `toprfPartial` は ristretto255 の正準表現、その他は Ed25519 の点。`h_i` も 32 バイト
+- `/register` はブラウザが各ノードに直接送る。`username` か `sub` がすでにあれば 409。`sub` はブラウザが選ぶ（sdk は UUID）ので、ノードは他人の `sub` を名乗る登録を一意性で防ぐ。ノードは `/register` に対し、issuer のオリジン（ログイン画面の出所）からの CORS を許可する
 - `sessionNonce` は 1 バイト以上のクライアント乱数。sdk のブラウザ実装は 16 バイトを使う
 - `/sign-on` の `nonce` は、値がないときはメンバーごと省く。`null` は拒否する（署名対象のペイロードに `nonce` を含めるか否かが変わるため）
 - `/sign-on` の `scope` は空文字列でもよい
@@ -62,6 +64,7 @@ base64url のデコーダは、アルファベット外の文字（`=`、`+`、`
 | ステータス | 意味 |
 |---|---|
 | 400 | ボディが不正（`body.<field> <理由>` の形。例 `body.request.blinded must decode to 32 bytes, got 31`）、または処理の拒否（未知のユーザー、期限切れ、署名不一致、ラウンドが見つからない等） |
+| 409 | `/register` の `username` か `sub` がすでにある |
 | 404 | 未知のパスまたはメソッド |
 | 500 | 想定外のエラー |
 
@@ -134,7 +137,7 @@ z_i = d_i + ρ_i·e_i + λ_i·s_i·c   (mod L)
 
 ## TOPRF
 
-群は ristretto255（RFC 9496）。ユーザーごとに独立した鍵 `k` を Shamir で分割し、ノード i は `k_i` を持つ。`pw` はパスワードの UTF-8 バイト列、`u64LE(n)` は 8 バイトリトルエンディアン、`u16LE(n)` は 2 バイトリトルエンディアン。
+群は ristretto255（RFC 9496）。ユーザーごとに独立した鍵 `k` をブラウザが登録時に一様乱数で選んで Shamir で分割し、ノード i は `k_i` を持つ。`pw` はパスワードの UTF-8 バイト列、`u64LE(n)` は 8 バイトリトルエンディアン、`u16LE(n)` は 2 バイトリトルエンディアン。
 
 ```
 H1(pw) = hash_to_ristretto255( SHA-512( "PASTA-TOPRF-H1" ‖ u64LE(len(pw)) ‖ pw ) )
@@ -150,7 +153,7 @@ H1(pw) = hash_to_ristretto255( SHA-512( "PASTA-TOPRF-H1" ‖ u64LE(len(pw)) ‖ 
                h_i = SHA-512( "PASTA-TOPRF-H-PRIME" ‖ h ‖ u16LE(i) )[0..32]
 ```
 
-`enc(v)` は `v` の 32 バイト正準表現。ノードは `k_i` と `h_i`（ディーラーが同じ手順で導出したもの）を保持し、`pw` も `h` も知らない。ノードは `blinded` を ristretto255 の正準表現として復号できなければ拒否する。
+`enc(v)` は `v` の 32 バイト正準表現。ノードは `k_i` と `h_i` を保持し、`pw` も `h` も知らない。どちらも登録時にブラウザが計算して `/register` で直接渡す。ブラウザは `k` を持っているので、`v = k·H1(pw)` をノードなしで求め、上と同じ `h` と `h_i` を導く。ゲートウェイは登録に関与しない。ノードは `blinded` を ristretto255 の正準表現として復号できなければ拒否する。
 
 ## AEAD
 
@@ -227,24 +230,16 @@ sdk のゲートウェイは `claims.iat = now`、`claims.exp = now + 3600` で�
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "nodeId": 1,
   "threshold": 2,
   "total": 3,
   "groupPublicKey": "<hex 64桁: Y>",
-  "secretKeyShare": "<hex 64桁: s_i>",
-  "users": [
-    {
-      "username": "alice",
-      "sub": "usr_alice_12345",
-      "toprfKeyShare": { "id": 1, "value": "<hex 64桁: k_i>" },
-      "h_i": "<hex 64桁: h_i (32 バイト)>"
-    }
-  ]
+  "secretKeyShare": "<hex 64桁: s_i>"
 }
 ```
 
-`toprfKeyShare.id` は自ノードの `nodeId` と一致していなければならず、ノードは一致しないファイルを読み込み時に拒否する。`users` は全ノードで同じユーザー集合（`username`、`sub`）を持つ。`keyId` はすべての JWT ヘッダの `kid` であり、ゲートウェイが JWKS で公開する鍵の識別子。
+`keyId` はすべての JWT ヘッダの `kid` であり、ゲートウェイが JWKS で公開する鍵の識別子。ユーザーの記録（`username`、`sub`、`k_i`、`h_i`）は `/register` で増え、その保存はノードの実装に任され、この仕様の対象外。
 
 ## テストベクタ
 

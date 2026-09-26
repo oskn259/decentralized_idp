@@ -1,10 +1,21 @@
 import crypto from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ed25519 } from "@noble/curves/ed25519";
-import { FakeClock, TEST_ISSUER, readFixtureJson } from "./helpers/build-node.js";
+import { FakeClock, TEST_ISSUER, readFixtureJson, testPublicUrl } from "./helpers/build-node.js";
 import { DEFAULT_KEY_ID } from "../src/domain/value/node-identity.js";
-import { ClientSession, decodeJwt, newDPoPKeyPair, prepareSign, signBody, signOnOverHttp, signOverHttp } from "./helpers/client.js";
-import { RunningNode, getJson, postJson, startAllNodes, stopAll } from "./helpers/http-server.js";
+import {
+  ClientSession,
+  decodeJwt,
+  fixtureUserShares,
+  newDPoPKeyPair,
+  prepareSign,
+  registerBody,
+  registerOverHttp,
+  signBody,
+  signOnOverHttp,
+  signOverHttp,
+} from "./helpers/client.js";
+import { FixtureNode, getJson, postJson, startAllNodes, stopAll } from "./helpers/http-server.js";
 import { base64UrlDecode, base64UrlEncode } from "@decentralized-idp/sdk/base64url";
 import { aggregateSignatureShares, computeGroupCommitment } from "@decentralized-idp/sdk/frost";
 import { hexToBytes } from "@decentralized-idp/sdk/hex";
@@ -13,7 +24,8 @@ import { blind } from "@decentralized-idp/sdk/toprf";
 
 /**
  * Component end-to-end test: three real node servers on ephemeral ports, exactly as three
- * containers would run, and every protocol message travels over real HTTP. `/commit` and
+ * containers would run, and every protocol message travels over real HTTP. `/register`
+ * gives every node its share of alice and bob before any test runs. `/commit` and
  * `/sign-on` build the assertion (the authorization code); `/commit` (twice) and `/sign`
  * turn it into an access token and a refresh token. The nodes share one `FakeClock`, so
  * the 30-second assertion window can be tested without a real 30-second wait.
@@ -25,12 +37,14 @@ const ISSUER = TEST_ISSUER;
 const CLIENT_ID = "demo_client";
 const SCOPE = "openid profile";
 
-let nodes: RunningNode[];
+let nodes: FixtureNode[];
 let clock: FakeClock;
 
 beforeAll(async () => {
   clock = new FakeClock(1_700_000_000);
   nodes = await startAllNodes({ clock });
+  await registerOverHttp({ nodes, username: "alice", password: "password123", sub: "usr_alice_12345" });
+  await registerOverHttp({ nodes, username: "bob", password: "password456", sub: "usr_bob_67890" });
 });
 
 afterAll(async () => {
@@ -65,13 +79,59 @@ function prepare(params: Parameters<typeof prepareSign>[0]): ReturnType<typeof p
 }
 
 describe("health", () => {
-  it("reports each node's own id and the shared group public key", async () => {
+  it("reports each node's own id and public URL, and the shared group public key", async () => {
     for (const n of nodes) {
       const res = await getJson(n.url, "/health");
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ status: "ok", nodeId: n.nodeId, groupPublicKey: base64UrlEncode(GROUP_PUBLIC_KEY) });
+      expect(res.body).toEqual({
+        status: "ok",
+        nodeId: n.nodeId,
+        groupPublicKey: base64UrlEncode(GROUP_PUBLIC_KEY),
+        publicUrl: testPublicUrl(n.nodeId),
+      });
     }
     expect(nodes.map((n) => n.nodeId).sort()).toEqual([1, 2, 3]);
+  });
+});
+
+describe("register", () => {
+  it("refuses a second registration of a username with 409", async () => {
+    const share = fixtureUserShares("another-password")[0];
+    const res = await postJson(nodes[0].url, "/register", registerBody(share, "alice", "usr_other"));
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "username alice is taken" });
+
+    // alice still signs on with her own password and keeps her sub.
+    expect(decodeJwt((await liveSession()).assertion).payload.sub).toBe("usr_alice_12345");
+  });
+
+  it("refuses with 409 another username claiming alice's sub", async () => {
+    const share = fixtureUserShares("pw")[0];
+    const res = await postJson(nodes[0].url, "/register", registerBody(share, "carol", "usr_alice_12345"));
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "sub usr_alice_12345 is taken" });
+  });
+
+  it("lets the login page at the issuer origin call /register cross-origin, and no other origin", async () => {
+    const preflight = (origin: string) =>
+      fetch(`${nodes[0].url}/register`, {
+        method: "OPTIONS",
+        headers: { Origin: origin, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "content-type" },
+      });
+    expect((await preflight(ISSUER)).headers.get("access-control-allow-origin")).toBe(ISSUER);
+    expect((await preflight("http://evil.test")).headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("keeps registered users across a restart on the same users file", async () => {
+    await registerOverHttp({ nodes, username: "erin", password: "password789", sub: "usr_erin" });
+    const restarted = await startAllNodes({ clock, usersFiles: nodes.map((n) => n.usersFile) });
+    try {
+      const session = await liveSession({ nodes: restarted, username: "erin", password: "password789" });
+      expect(verifyToken(session.assertion)).toBe(true);
+      expect(decodeJwt(session.assertion).payload.sub).toBe("usr_erin");
+    } finally {
+      await stopAll(restarted);
+    }
   });
 });
 

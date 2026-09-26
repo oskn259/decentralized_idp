@@ -57,7 +57,26 @@ export type Grant = z.infer<typeof grant>;
 
 // ---- GET /health ------------------------------------------------------------------
 
-export const healthResponse = z.object({ status: z.literal("ok"), nodeId, groupPublicKey: bytes(32) });
+export const healthResponse = z.object({
+  status: z.literal("ok"),
+  nodeId,
+  groupPublicKey: bytes(32),
+  /** Where a browser reaches this node for `/register`. */
+  publicUrl: text,
+});
+
+// ---- POST /register: one user's share for this node, straight from the browser ---------------
+
+export const registerRequest = z.object({
+  username: text,
+  /** Chosen by the browser; the node refuses one it already holds. */
+  sub: text,
+  /** k_i */
+  toprfKeyShare: scalar,
+  /** h_i = H(h, i) */
+  h_i: bytes(32),
+});
+export const registerResponse = z.object({ nodeId });
 
 // ---- POST /commit: FROST round 1 ------------------------------------------------------
 
@@ -124,6 +143,10 @@ export const signResponse = z.object({ nodeId, at: scalar, rt: scalar });
 
 export type HealthResponse = z.output<typeof healthResponse>;
 export type HealthResponseWire = z.input<typeof healthResponse>;
+export type RegisterRequest = z.output<typeof registerRequest>;
+export type RegisterRequestWire = z.input<typeof registerRequest>;
+export type RegisterResponse = z.output<typeof registerResponse>;
+export type RegisterResponseWire = z.input<typeof registerResponse>;
 export type CommitRequest = z.output<typeof commitRequest>;
 export type CommitRequestWire = z.input<typeof commitRequest>;
 export type CommitResponse = z.output<typeof commitResponse>;

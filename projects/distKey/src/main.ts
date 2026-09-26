@@ -1,22 +1,16 @@
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { DistributedKeys, distributeKeys, UserSpec } from "./domain/usecase/distribute-keys.js";
+import { DistributedKeys, distributeKeys } from "./domain/usecase/distribute-keys.js";
 import { existingOutputFiles, outputFileNames, outputFiles, writeOutputFiles } from "./infra/output.js";
 
-const DEFAULT_USERS: UserSpec[] = [
-  { username: "alice", password: "password123", sub: "usr_alice_12345" },
-  { username: "bob", password: "password456", sub: "usr_bob_67890" },
-];
-
-const USAGE = `distKey - splits the group signing key and each user's TOPRF key across the nodes
+const USAGE = `distKey - splits the group signing key across the nodes
 
 Usage:
-  distKey --out <dir> [--threshold 2] [--total 3] [--users <u>:<pw>:<sub>,...] [--force]
+  distKey --out <dir> [--threshold 2] [--total 3] [--force]
 
-Writes <dir>/group.json and <dir>/node-<id>.json for id 1..total. Passwords are never written.
+Writes <dir>/group.json and <dir>/node-<id>.json for id 1..total.
 When every file is already there, nothing is written and the keys are kept (so a restart
 does not rotate them). When only some are there, the run fails unless --force is given.
-Default users: ${DEFAULT_USERS.map((u) => `${u.username}:<password>:${u.sub}`).join(", ")}
 `;
 
 type Sink = { write(text: string): unknown };
@@ -26,7 +20,6 @@ interface Options {
   out: string | undefined;
   threshold: number;
   total: number;
-  users: string | undefined;
   force: boolean;
 }
 
@@ -62,8 +55,7 @@ export function main(argv: string[], out: Sink = process.stdout, err: Sink = pro
 
   let keys: DistributedKeys;
   try {
-    const users = options.users === undefined ? DEFAULT_USERS : parseUsers(options.users);
-    keys = distributeKeys(options.threshold, options.total, users);
+    keys = distributeKeys(options.threshold, options.total);
   } catch (e) {
     err.write(`error: ${(e as Error).message}\n`);
     return 1;
@@ -80,7 +72,6 @@ function parseOptions(argv: string[]): Options {
       out: { type: "string" },
       threshold: { type: "string", default: "2" },
       total: { type: "string", default: "3" },
-      users: { type: "string" },
       force: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
@@ -90,36 +81,14 @@ function parseOptions(argv: string[]): Options {
     out: values.out,
     threshold: Number(values.threshold),
     total: Number(values.total),
-    users: values.users,
     force: values.force,
   };
 }
 
-/** `<username>:<password>:<sub>,...` — the first and last colon separate, so a password may contain colons. */
-export function parseUsers(value: string): UserSpec[] {
-  return value.split(",").map((entry) => {
-    const invalid = `invalid --users entry "${entry}": expected <username>:<password>:<sub>`;
-    const first = entry.indexOf(":");
-    const last = entry.lastIndexOf(":");
-    if (first === -1 || last === first) {
-      throw new Error(invalid);
-    }
-    const username = entry.slice(0, first);
-    const password = entry.slice(first + 1, last);
-    const sub = entry.slice(last + 1);
-    if (!username || !password || !sub) {
-      throw new Error(invalid);
-    }
-    return { username, password, sub };
-  });
-}
-
 function summary(dir: string, names: string[], keys: DistributedKeys): string {
-  // Every node lists every user, so any node's list is the whole set.
-  const usernames = keys.nodes[0].users.map((u) => u.username).join(",");
   return (
     `distKey: wrote ${names.length} files to ${dir}\n` +
-    `  threshold=${keys.threshold} total=${keys.total} users=${usernames}\n` +
+    `  threshold=${keys.threshold} total=${keys.total}\n` +
     names.map((n) => `  ${path.join(dir, n)}\n`).join("")
   );
 }

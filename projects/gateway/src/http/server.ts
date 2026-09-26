@@ -8,6 +8,7 @@ import { DemoLog } from "./demo-log.js";
 import { authorizeEndpoint, authorizeQuery, authorizeRefusal } from "./endpoint/authorize.js";
 import { healthEndpoint } from "./endpoint/health.js";
 import { jwksEndpoint, metadataEndpoint } from "./endpoint/metadata.js";
+import { nodesEndpoint } from "./endpoint/nodes.js";
 import { signOnBody, signOnEndpoint } from "./endpoint/sign-on.js";
 import { tokenEndpoint, tokenForm } from "./endpoint/token.js";
 import { uiEndpoint } from "./endpoint/ui.js";
@@ -37,6 +38,7 @@ export function createGatewayApp(gateway: Gateway, demo: DemoLog, options: Serve
   app.get("/authorize", zValidator("query", authorizeQuery, authorizeRefusal(demo)), (c) =>
     authorizeEndpoint(c.req.valid("query"), c, demo)
   );
+  app.get("/api/pasta/nodes", (c) => nodesEndpoint(gateway, c));
   app.post("/api/pasta/sign-on", requireJson, zValidator("json", signOnBody, badRequest(demo, "sign-on")), (c) =>
     signOnEndpoint(gateway, c.req.valid("json"), c, demo)
   );

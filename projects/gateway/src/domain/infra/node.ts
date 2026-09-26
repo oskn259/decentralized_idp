@@ -9,6 +9,8 @@ import { AccessTokenClaims } from "@decentralized-idp/sdk/tokens";
 export interface Node {
   readonly nodeId: number;
   readonly url: string;
+  /** Where a browser reaches this node, as its `/health` reports it. */
+  readonly publicUrl: string;
   /** FROST round 1: opens `roundId` on the node and returns its commitment. */
   commit(roundId: string): Promise<Commitment>;
   signOn(request: NodeSignOnRequest): Promise<NodeSignOnResponse>;
@@ -19,6 +21,7 @@ export interface Node {
 export interface NodeHealth {
   nodeId: number;
   groupPublicKey: Uint8Array;
+  publicUrl: string;
 }
 
 export interface NodeSignOnRequest {

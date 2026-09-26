@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { register } from "./client/register.js";
 import { signOn } from "./client/sign-on.js";
 
 /** What `/authorize` puts in this page's URL. */
@@ -43,6 +44,12 @@ function signOnFromThisPage(authorize: AuthorizeParams, username: string, passwo
   });
 }
 
+/** Registers the account, then signs on with the same credentials (the whitepaper's flow: registration continues straight into login). */
+async function registerThenSignOn(authorize: AuthorizeParams, username: string, password: string, log: (line: string) => void): Promise<string> {
+  await register({ gatewayUrl: "", username, password, log });
+  return signOnFromThisPage(authorize, username, password, log);
+}
+
 /**
  * `redirect_uri?code=<assertion>&state=<state>`: the assertion goes back as the authorization code.
  * Called only after a sign-on, which needs `ready`, so `redirect_uri` is present.
@@ -63,8 +70,9 @@ export default function App() {
   const authorize = readAuthorizeParams(window.location.search);
   const ready = Boolean(authorize.challenge && authorize.redirectUri && authorize.dpopJkt);
 
-  const [username, setUsername] = useState("alice");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [creatingAccount, setCreatingAccount] = useState(false);
   const [lines, setLines] = useState<string[]>([]);
   const [assertion, setAssertion] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +85,10 @@ export default function App() {
     setError(null);
     setAssertion(null);
     try {
-      const result = await signOnFromThisPage(authorize, username, password, (line) => setLines((prev) => [...prev, line]));
+      const log = (line: string) => setLines((prev) => [...prev, line]);
+      const result = creatingAccount
+        ? await registerThenSignOn(authorize, username, password, log)
+        : await signOnFromThisPage(authorize, username, password, log);
       setAssertion(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -86,6 +97,7 @@ export default function App() {
     }
   }
 
+  const action = creatingAccount ? "Create account and sign on" : "Sign on";
   const clientLine = authorize.clientId ? <>Client <code>{authorize.clientId}</code> asks for <code>{authorize.scope || "(no scope)"}</code>.</> : "No client.";
 
   return (
@@ -107,8 +119,12 @@ export default function App() {
           Password
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
         </label>
+        <label>
+          <input type="checkbox" checked={creatingAccount} onChange={(e) => setCreatingAccount(e.target.checked)} />
+          Create account
+        </label>
         <button type="submit" disabled={!ready || busy || !password}>
-          {busy ? "Signing on…" : "Sign on"}
+          {busy ? "Working…" : action}
         </button>
       </form>
 

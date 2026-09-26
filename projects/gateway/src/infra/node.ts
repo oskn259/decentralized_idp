@@ -10,7 +10,14 @@ import {
   signRequest,
   signResponse,
 } from "@decentralized-idp/sdk/node-api";
-import { Node, NodeHealth, NodeSignOnRequest, NodeSignOnResponse, NodeTokenRequest, NodeTokenShares } from "../domain/infra/node.js";
+import {
+  Node,
+  NodeHealth,
+  NodeSignOnRequest,
+  NodeSignOnResponse,
+  NodeTokenRequest,
+  NodeTokenShares,
+} from "../domain/infra/node.js";
 import { Group } from "../domain/value/group.js";
 
 /** How long one node call may take before the node counts as unreachable for this round. */
@@ -20,7 +27,8 @@ export const NODE_TIMEOUT_MS = 5_000;
 export class HttpNode implements Node {
   constructor(
     readonly nodeId: number,
-    readonly url: string
+    readonly url: string,
+    readonly publicUrl: string
   ) {}
 
   async commit(roundId: string): Promise<Commitment> {
@@ -46,14 +54,16 @@ export class HttpNode implements Node {
 
   async health(timeoutMs = NODE_TIMEOUT_MS): Promise<NodeHealth> {
     const res = await this.request("GET", "/health", undefined, timeoutMs, healthResponse);
-    return { nodeId: res.nodeId, groupPublicKey: res.groupPublicKey };
+    return { nodeId: res.nodeId, groupPublicKey: res.groupPublicKey, publicUrl: res.publicUrl };
   }
 
   private post<T>(path: string, body: unknown, response: z.ZodType<T>): Promise<T> {
     return this.request("POST", path, body, NODE_TIMEOUT_MS, response);
   }
 
-  /** Every failure — refused, timed out, non-2xx, malformed answer — is an Error naming the node. */
+  /**
+   * Every failure — refused, timed out, non-2xx, malformed answer — is an Error naming the node.
+   */
   private async request<T>(method: string, path: string, body: unknown, timeoutMs: number, response: z.ZodType<T>): Promise<T> {
     let res: Response;
     try {
@@ -119,11 +129,12 @@ async function probeNodes(urls: string[], group: Group, log: (line: string) => v
 
 /** The node behind `url`, or undefined while it does not answer. A different group key is fatal. */
 async function probeNode(url: string, group: Group, log: (line: string) => void): Promise<Node | undefined> {
-  const health = await new HttpNode(0, url).health().catch(() => undefined);
+  // Id and public URL are what /health is asked for; placeholders until it answers.
+  const health = await new HttpNode(0, url, "").health().catch(() => undefined);
   if (health === undefined) return undefined;
   if (bytesToHex(health.groupPublicKey) !== bytesToHex(group.groupPublicKey)) {
     throw new Error(`node at ${url} holds a different group key than group.json`);
   }
   log(`[gateway] discovered node ${health.nodeId} at ${url}`);
-  return new HttpNode(health.nodeId, url);
+  return new HttpNode(health.nodeId, url, health.publicUrl);
 }

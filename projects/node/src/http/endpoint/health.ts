@@ -4,5 +4,6 @@ import { IdentityNode } from "../../domain/usecase/identity-node.js";
 
 /** `GET /health` */
 export function health(node: IdentityNode): HealthResponseWire {
-  return z.encode(healthResponse, { status: "ok", nodeId: node.identity.nodeId, groupPublicKey: node.identity.groupPublicKey });
+  const { nodeId, groupPublicKey, publicUrl } = node.identity;
+  return z.encode(healthResponse, { status: "ok", nodeId, groupPublicKey, publicUrl });
 }

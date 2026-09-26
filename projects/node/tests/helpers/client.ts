@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { ristretto255 } from "@noble/curves/ed25519";
 import { MAX_ASSERTION_LIFETIME_SECONDS, REFRESH_TOKEN_LIFETIME_SECONDS } from "../../src/domain/service/credential.js";
 import { DEFAULT_KEY_ID } from "../../src/domain/value/node-identity.js";
+import { readFixtureJson } from "./build-node.js";
 import { RunningNode, postJsonOrThrow } from "./http-server.js";
 import { aeadDecrypt, deriveAeadNonce } from "@decentralized-idp/sdk/aead";
 import { base64UrlDecode, base64UrlEncode } from "@decentralized-idp/sdk/base64url";
@@ -9,14 +10,46 @@ import { calculateJwkThumbprint, createDPoPProof, DPoPKeyPair, exportDPoPJwk, ge
 import { aggregateSignatureShares, computeGroupCommitment, FrostCommitment } from "@decentralized-idp/sdk/frost";
 import { assembleJwt, createSigningInput, decodeJwt as decodeJwtParts } from "@decentralized-idp/sdk/jwt";
 import { CommitResponseWire, SignOnResponseWire, SignResponseWire } from "@decentralized-idp/sdk/node-api";
+import { bigIntToHex } from "@decentralized-idp/sdk/hex";
+import { UserShare, createUserShares } from "@decentralized-idp/sdk/register";
 import { assertionJwt } from "@decentralized-idp/sdk/tokens";
 import { blind, deriveServerKey, finalize, unblind } from "@decentralized-idp/sdk/toprf";
 
 /**
- * The gateway's two client roles over real HTTP: the browser half assembles the assertion
- * by decrypting every `ct_i` and aggregating the FROST shares; the gateway half holds the
- * DPoP key and spends that assertion, or a refresh token, for an access and a refresh token.
+ * The gateway's client roles over real HTTP: the browser half registers a user by sending
+ * each node its share directly, and assembles the assertion by decrypting every `ct_i` and
+ * aggregating the FROST shares; the gateway half holds the DPoP key and spends that
+ * assertion, or a refresh token, for an access and a refresh token.
  */
+
+export interface RegisterParams {
+  nodes: RunningNode[];
+  username: string;
+  password: string;
+  sub: string;
+}
+
+/** One share per fixture node, for the group's threshold. */
+export function fixtureUserShares(password: string): UserShare[] {
+  const { threshold, total } = readFixtureJson("group.json");
+  return createUserShares(password, threshold, total);
+}
+
+/** A `/register` body carrying `share` in plaintext, as the browser sends it. */
+export function registerBody(share: UserShare, username: string, sub: string): Record<string, unknown> {
+  return { username, sub, toprfKeyShare: bigIntToHex(share.toprfKeyShare.value), h_i: base64UrlEncode(share.h_i) };
+}
+
+/** Registration as the browser does it: `/register` on every node, each with its own share. */
+export async function registerOverHttp(params: RegisterParams): Promise<void> {
+  const shares = fixtureUserShares(params.password);
+  await Promise.all(
+    params.nodes.map((node) => {
+      const share = shares.find((s) => s.nodeId === node.nodeId)!;
+      return postJsonOrThrow(node.url, "/register", registerBody(share, params.username, params.sub));
+    })
+  );
+}
 
 export function newDPoPKeyPair(): { keyPair: DPoPKeyPair; cnfJkt: string } {
   const keyPair = generateDPoPKeyPair();

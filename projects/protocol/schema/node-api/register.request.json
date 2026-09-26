@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "username": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sub": {
+      "type": "string",
+      "minLength": 1
+    },
+    "toprfKeyShare": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "h_i": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    }
+  },
+  "required": [
+    "username",
+    "sub",
+    "toprfKeyShare",
+    "h_i"
+  ]
+}

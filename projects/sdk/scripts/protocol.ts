@@ -42,6 +42,8 @@ export function generateProtocolFiles(): ProtocolFiles {
 
 const bodies = {
   "health.response": api.healthResponse,
+  "register.request": api.registerRequest,
+  "register.response": api.registerResponse,
   "commit.request": api.commitRequest,
   "commit.response": api.commitResponse,
   "sign-on.request": api.signOnRequest,

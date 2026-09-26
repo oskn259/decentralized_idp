@@ -61,7 +61,6 @@ function nodeColor(nodeId: number): string {
 export interface StartupInfo {
   threshold: number;
   total: number;
-  usernames: string[];
 }
 
 export interface DemoLog {
@@ -108,11 +107,9 @@ export function createDemoLog(options: DemoLogOptions): DemoLog {
     },
 
     startup(info) {
-      const users = info.usernames.join(",") || "-";
       event(
         "● up",
-        `id=${id} t=${info.threshold}/${info.total} users=${users}   ` +
-          `holds: s_${id}, k_${id}, h_${id}(${users})   never: ${NEVER_HELD}`
+        `id=${id} t=${info.threshold}/${info.total}   holds: s_${id}, and k_${id}, h_${id} per registered user   never: ${NEVER_HELD}`
       );
     },
 

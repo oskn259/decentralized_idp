@@ -71,6 +71,7 @@ RP から見ると RFC 6749 の認可コードフロー + RFC 9449 DPoP + RFC 90
 | GET | `/.well-known/oauth-authorization-server` | OAuth のメタデータ（RFC 8414）。OpenID Connect ではないので id_token はない |
 | GET | `/jwks.json` | グループ公開鍵（CORS: `RP_ORIGIN`） |
 | GET | `/authorize` | 認可リクエストを受け、ログインページへ302 |
+| GET | `/api/pasta/nodes` | 閾値と、ブラウザから各ノードへ届く URL |
 | POST | `/api/pasta/sign-on` | ログインページからのサインオンの中継 |
 | POST | `/token` | 認可コードまたはリフレッシュトークンをアクセストークンに交換 |
 | GET | `/`, `/login`, `/assets/*` | ログインUIの静的配信 |
@@ -84,6 +85,9 @@ GET /authorize?client_id=...&redirect_uri=...&response_type=code&scope=...&dpop_
 → 302 /login?step=login&c=<challenge>&client_id=...&redirect_uri=...&scope=...&state=...&dpop_jkt=...
 → 302 redirect_uri?error=invalid_request&error_description=<field>: <理由>&state=...   # redirect_uri が使えるとき（RFC 6749 §4.1.2.1）
 → 400 { "error": "invalid_request", "error_description": "<field>: <理由>" }        # redirect_uri が無い・不正なとき
+
+GET /api/pasta/nodes
+→ 200 { "threshold", "total", "nodes": [{ "nodeId", "url" }] }   # nodeId 昇順。url は各ノードの /health の publicUrl
 
 POST /api/pasta/sign-on
 { "username", "blinded": "<base64url 32byte>", "sessionNonce": "<base64url>",
@@ -99,6 +103,10 @@ grant_type=refresh_token&refresh_token=<jwt>
 → 400 { "error", "error_description" }   # invalid_request | invalid_grant | invalid_dpop_proof
 Cache-Control: no-store （成功・失敗とも）
 ```
+
+## 登録
+
+登録はブラウザから各ノードの`/register`へ直接送られる。ゲートウェイはノードのURLを公開するだけで、シェアを一切目にしない。
 
 ## 検証範囲とラウンドの規則
 

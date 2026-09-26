@@ -34,7 +34,8 @@ export class FakeNode implements Node {
   constructor(
     readonly nodeId: number,
     private readonly opts: FakeNodeOptions = {},
-    readonly url = `http://fake-node-${nodeId}.test`
+    readonly url = `http://fake-node-${nodeId}.test`,
+    readonly publicUrl = `http://fake-node-${nodeId}.test`
   ) {}
 
   async commit(roundId: string): Promise<Commitment> {
@@ -59,7 +60,11 @@ export class FakeNode implements Node {
 
   async health(): Promise<NodeHealth> {
     if (this.opts.healthFails) throw failure(this.opts.healthFails, `node ${this.nodeId} unhealthy`);
-    return { nodeId: this.nodeId, groupPublicKey: this.opts.groupPublicKey ?? new Uint8Array(32).fill(this.nodeId) };
+    return {
+      nodeId: this.nodeId,
+      groupPublicKey: this.opts.groupPublicKey ?? new Uint8Array(32).fill(this.nodeId),
+      publicUrl: this.publicUrl,
+    };
   }
 }
 
