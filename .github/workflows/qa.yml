@@ -1,0 +1,24 @@
+# Timing experiment for issue #7: how long the full qa-gate, browser e2e against docker
+# compose included, takes on a fresh GitHub-hosted runner.
+name: qa
+on:
+  push:
+    branches: [ci/timing]
+  workflow_dispatch:
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # The dealer container runs as uid 1000 and writes the key files here.
+      - run: mkdir -p secrets && chmod 777 secrets
+      - run: npm run qa-gate
+      - if: always()
+        run: docker compose logs --no-color | tail -50
