@@ -22,13 +22,22 @@ import { Group } from "../domain/value/group.js";
 
 /** How long one node call may take before the node counts as unreachable for this round. */
 export const NODE_TIMEOUT_MS = 5_000;
+/** `/sign` may first answer 402 and then settle a payment on chain before it signs. */
+export const SIGN_TIMEOUT_MS = 30_000;
+
+/** How the gateway calls a node: which `fetch` (one that pays a 402), and its client assertion for a node's `publicUrl`. */
+export interface NodeCaller {
+  fetch: typeof fetch;
+  clientAssertion(aud: string): string;
+}
 
 /** Requests and responses cross the wire in the shapes `@decentralized-idp/sdk/node-api` defines. */
 export class HttpNode implements Node {
   constructor(
     readonly nodeId: number,
     readonly url: string,
-    readonly publicUrl: string
+    readonly publicUrl: string,
+    private readonly caller: NodeCaller
   ) {}
 
   async commit(roundId: string): Promise<Commitment> {
@@ -47,8 +56,9 @@ export class HttpNode implements Node {
   async sign(request: NodeTokenRequest): Promise<NodeTokenShares> {
     const { accessRoundId, refreshRoundId, credential, ...rest } = request;
     const credentialField = request.grant === "authorization_code" ? { assertion: credential } : { refreshToken: credential };
-    const body = z.encode(signRequest, { roundId: accessRoundId, refreshRoundId, request: { ...rest, ...credentialField } });
-    const res = await this.post("/sign", body, signResponse);
+    const clientAssertion = this.caller.clientAssertion(this.publicUrl);
+    const body = z.encode(signRequest, { roundId: accessRoundId, refreshRoundId, request: { ...rest, ...credentialField, clientAssertion } });
+    const res = await this.request("POST", "/sign", body, SIGN_TIMEOUT_MS, signResponse);
     return { nodeId: res.nodeId, accessShare: res.at, refreshShare: res.rt };
   }
 
@@ -67,7 +77,7 @@ export class HttpNode implements Node {
   private async request<T>(method: string, path: string, body: unknown, timeoutMs: number, response: z.ZodType<T>): Promise<T> {
     let res: Response;
     try {
-      res = await fetch(`${this.url}${path}`, {
+      res = await this.caller.fetch(`${this.url}${path}`, {
         method,
         headers: body === undefined ? undefined : { "Content-Type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -97,6 +107,7 @@ export class HttpNode implements Node {
 export async function discoverNodes(
   urls: string[],
   group: Group,
+  caller: NodeCaller,
   attempts = 30,
   retryDelayMs = 1_000,
   log: (line: string) => void = console.log
@@ -104,7 +115,7 @@ export async function discoverNodes(
   const found: Node[] = [];
   let missing = urls;
   for (let attempt = 1; attempt <= attempts && missing.length > 0; attempt++) {
-    found.push(...(await probeNodes(missing, group, log)));
+    found.push(...(await probeNodes(missing, group, caller, log)));
     missing = missing.filter((url) => !found.some((node) => node.url === url));
     if (missing.length > 0 && attempt < attempts) {
       log(`[gateway] waiting for ${missing.length} node(s) (attempt ${attempt}/${attempts})`);
@@ -122,19 +133,19 @@ export async function discoverNodes(
 }
 
 /** One attempt over the given urls: the nodes that answered. */
-async function probeNodes(urls: string[], group: Group, log: (line: string) => void): Promise<Node[]> {
-  const answers = await Promise.all(urls.map((url) => probeNode(url, group, log)));
+async function probeNodes(urls: string[], group: Group, caller: NodeCaller, log: (line: string) => void): Promise<Node[]> {
+  const answers = await Promise.all(urls.map((url) => probeNode(url, group, caller, log)));
   return answers.filter((node) => node !== undefined);
 }
 
 /** The node behind `url`, or undefined while it does not answer. A different group key is fatal. */
-async function probeNode(url: string, group: Group, log: (line: string) => void): Promise<Node | undefined> {
+async function probeNode(url: string, group: Group, caller: NodeCaller, log: (line: string) => void): Promise<Node | undefined> {
   // Id and public URL are what /health is asked for; placeholders until it answers.
-  const health = await new HttpNode(0, url, "").health().catch(() => undefined);
+  const health = await new HttpNode(0, url, "", caller).health().catch(() => undefined);
   if (health === undefined) return undefined;
   if (bytesToHex(health.groupPublicKey) !== bytesToHex(group.groupPublicKey)) {
     throw new Error(`node at ${url} holds a different group key than group.json`);
   }
   log(`[gateway] discovered node ${health.nodeId} at ${url}`);
-  return new HttpNode(health.nodeId, url, health.publicUrl);
+  return new HttpNode(health.nodeId, url, health.publicUrl, caller);
 }

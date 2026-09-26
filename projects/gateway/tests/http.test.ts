@@ -8,6 +8,8 @@ import { base64UrlDecode, base64UrlEncode } from "@decentralized-idp/sdk/base64u
 import { calculateJwkThumbprint, createDPoPProof, exportDPoPJwk, generateDPoPKeyPair } from "@decentralized-idp/sdk/dpop";
 import { assembleJwt, createSigningInput, decodeJwt } from "@decentralized-idp/sdk/jwt";
 import { assertionJwt } from "@decentralized-idp/sdk/tokens";
+import { CreditStore, PaymentTerms, Settler, USDC } from "@decentralized-idp/sdk/x402";
+import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import { Gateway } from "../src/domain/usecase/gateway.js";
 import { createDemoLog } from "../src/http/demo-log.js";
 import { createGatewayServer } from "../src/http/server.js";
@@ -19,8 +21,10 @@ import { TempDist, makeTempDist } from "./helpers/temp-dist.js";
  * What the gateway does when nodes misbehave, seen from its HTTP surface: exclusion, quorum,
  * error codes, a commitment that is not a curve point. The fake nodes inject the failures
  * real nodes would not produce. Client authentication is seen from an attacker's side: no
- * assertion, a key that is not registered, a code issued to another client. The one
- * static-file test guards the directory boundary.
+ * assertion, a key that is not registered, a code issued to another client. Payment is
+ * seen from a client without credit and a settlement that fails; `HttpNode` from a node
+ * checking the gateway's assertion with its own crypto. The one static-file test guards the
+ * directory boundary.
  */
 
 const RP_ORIGIN = "http://localhost:5173";
@@ -46,6 +50,30 @@ function signClientAssertion(privateKey: KeyObject, clientId = "demo_client"): s
   return assembleJwt(headerB64, payloadB64, sign(null, signingInput, privateKey));
 }
 
+const GATEWAY_WALLET = `0x${"11".repeat(20)}` as const;
+const TERMS: PaymentTerms = { ...USDC["eip155:84532"], payTo: GATEWAY_WALLET, unitAmount: 10000n, batch: 2 };
+
+/** Settles every payment, or refuses every one as a chain would refuse a bad signature. */
+function fakeSettler(succeeds: boolean): Settler {
+  return {
+    settle: async (_, requirements) =>
+      succeeds
+        ? { success: true, transaction: "0xfeedbeef0000", network: requirements.network, payer: "0xrp" }
+        : { success: false, errorReason: "invalid_exact_evm_payload_signature", transaction: "", network: requirements.network },
+  };
+}
+
+function memoryCredits(initial: Record<string, number>): CreditStore {
+  const credits = { ...initial };
+  return { balance: (payer) => credits[payer] ?? 0, set: (payer, n) => void (credits[payer] = n) };
+}
+
+interface BillingOptions {
+  /** `demo_client`'s credit at start; plenty unless a test is about payment. */
+  credits?: number;
+  settles?: boolean;
+}
+
 interface TestServer {
   url: string;
   gateway: Gateway;
@@ -53,12 +81,17 @@ interface TestServer {
   close(): Promise<void>;
 }
 
-async function startTestServer(nodes: FakeNode[], dist: TempDist, threshold = 2): Promise<TestServer> {
+async function startTestServer(nodes: FakeNode[], dist: TempDist, threshold = 2, billing: BillingOptions = {}): Promise<TestServer> {
   const gateway: Gateway = {
     group: { issuer: ISSUER, threshold, groupPublicKey: GROUP_PUBLIC_KEY, keyId: "pasta-group-key-1" },
     nodes,
     clients: [{ clientId: "demo_client", publicKey: DEMO_CLIENT_KEY.publicKey }],
     clock: new TestClock(NOW),
+    billing: {
+      terms: TERMS,
+      credits: memoryCredits({ demo_client: billing.credits ?? 100 }),
+      settler: fakeSettler(billing.settles ?? true),
+    },
   };
   const logLines: string[] = [];
   const demo = createDemoLog({ env: { DEMO_LOG: "1" }, isTty: false, write: (l) => logLines.push(l) });
@@ -123,13 +156,18 @@ function clientCredential(codeClientId = "demo_client"): {
 }
 
 /** `clientAssertion` travels as `client_assertion` with the jwt-bearer type; left out, the client does not authenticate. */
-async function postToken(form: Record<string, string>, dpop?: string, clientAssertion?: string): Promise<Response> {
+async function postToken(
+  form: Record<string, string>,
+  dpop?: string,
+  clientAssertion?: string,
+  extraHeaders: Record<string, string> = {}
+): Promise<Response> {
   const body = new URLSearchParams(form);
   if (clientAssertion !== undefined) {
     body.set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer");
     body.set("client_assertion", clientAssertion);
   }
-  const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded" };
+  const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded", ...extraHeaders };
   if (dpop !== undefined) headers.DPoP = dpop;
   return fetch(`${server!.url}/token`, { method: "POST", headers, body });
 }
@@ -299,6 +337,67 @@ describe("POST /token client authentication", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_grant", error_description: "credential was issued to another client" });
     for (const node of server!.gateway.nodes as FakeNode[]) expect(node.commitCalls).toEqual([]);
+  });
+});
+
+describe("POST /token paid with x402 credit", () => {
+  const threeNodes = () => [new FakeNode(1), new FakeNode(2), new FakeNode(3)];
+
+  /** A `PAYMENT-SIGNATURE` for what a 402 asked; the fake settler does not look inside `payload`. */
+  function paymentFor(res: Response): string {
+    const required = decodePaymentRequiredHeader(res.headers.get("PAYMENT-REQUIRED")!);
+    return encodePaymentSignatureHeader({ x402Version: 2, accepted: required.accepts[0], payload: {} });
+  }
+
+  it("402 payment_required without credit, asking the batch price to the gateway's wallet", async () => {
+    server = await startTestServer(threeNodes(), dist, 2, { credits: 0 });
+    const { credential, proof, clientAssertion } = clientCredential();
+
+    const res = await postToken({ grant_type: "authorization_code", code: credential }, proof, clientAssertion);
+    expect(res.status).toBe(402);
+    expect((await res.json()).error).toBe("payment_required");
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const [accepted] = decodePaymentRequiredHeader(res.headers.get("PAYMENT-REQUIRED")!).accepts;
+    expect(accepted.amount).toBe("20000");
+    expect(accepted.payTo).toBe(GATEWAY_WALLET);
+    expect(server.logLines.some((l) => l.includes("✖ token rejected: payment_required: payment required"))).toBe(true);
+  });
+
+  it("a settled payment buys exactly one batch of token sets", async () => {
+    server = await startTestServer(threeNodes(), dist, 2, { credits: 0 });
+    const { credential, proof, clientAssertion } = clientCredential();
+    const post = (headers: Record<string, string> = {}) =>
+      postToken({ grant_type: "authorization_code", code: credential }, proof, clientAssertion, headers);
+
+    const unpaid = await post();
+    const paid = await post({ "PAYMENT-SIGNATURE": paymentFor(unpaid) });
+    expect(paid.status).toBe(200);
+    expect(paid.headers.get("PAYMENT-RESPONSE")).not.toBeNull();
+    expect((await post()).status).toBe(200);
+    expect((await post()).status).toBe(402);
+    expect(server.logLines.some((l) => l.includes("pay       from=demo_client +2 credits (settled 0xfeedbe)"))).toBe(true);
+    expect(server.logLines.some((l) => l.includes("credits=0"))).toBe(true);
+  });
+
+  it("a refused /token costs no credit", async () => {
+    server = await startTestServer([new FakeNode(1), new FakeNode(2, { signFails: "node 2 rejects" }), new FakeNode(3)], dist, 2, { credits: 1 });
+    const { credential, proof, clientAssertion } = clientCredential();
+
+    const res = await postToken({ grant_type: "authorization_code", code: credential }, proof, clientAssertion);
+    expect(res.status).toBe(400);
+    expect(server.gateway.billing.credits.balance("demo_client")).toBe(1);
+  });
+
+  it("402 settlement failed, with no credit given, when the chain refuses the payment", async () => {
+    server = await startTestServer(threeNodes(), dist, 2, { credits: 0, settles: false });
+    const { credential, proof, clientAssertion } = clientCredential();
+    const post = (headers: Record<string, string> = {}) =>
+      postToken({ grant_type: "authorization_code", code: credential }, proof, clientAssertion, headers);
+
+    const res = await post({ "PAYMENT-SIGNATURE": paymentFor(await post()) });
+    expect(res.status).toBe(402);
+    expect((await res.json()).error_description).toContain("settlement failed");
+    expect(server.gateway.billing.credits.balance("demo_client")).toBe(0);
   });
 });
 

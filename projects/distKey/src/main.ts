@@ -3,14 +3,15 @@ import { parseArgs } from "node:util";
 import { DistributedKeys, distributeKeys } from "./domain/usecase/distribute-keys.js";
 import { existingOutputFiles, outputFileNames, outputFiles, writeOutputFiles } from "./infra/output.js";
 
-const USAGE = `distKey - splits the group signing key across the nodes, and keys the demo relying parties
+const USAGE = `distKey - splits the group signing key across the nodes, and creates the demo accounts
 
 Usage:
   distKey --out <dir> [--threshold 2] [--total 3] [--clients demo_client] [--force]
 
-Writes <dir>/group.json and <dir>/node-<id>.json for id 1..total, plus <dir>/clients.json (the
-relying parties' public keys, for the gateway) and <dir>/client-<client_id>.json (each one's
-private key).
+Writes <dir>/group.json and <dir>/node-<id>.json for id 1..total (each with its wallet),
+<dir>/clients.json (the relying parties' public keys, for the gateway), <dir>/client-<client_id>.json
+(each one's private key and wallet), <dir>/gateway.json (the gateway's key and wallet) and
+<dir>/gateways.json (its public key, for the nodes). Wallets start empty: fund them before use.
 When every file is already there, nothing is written and the keys are kept (so a restart
 does not rotate them). When only some are there, the run fails unless --force is given.
 `;
@@ -91,10 +92,16 @@ function parseOptions(argv: string[]): Options {
 }
 
 function summary(dir: string, names: string[], keys: DistributedKeys): string {
+  const wallets = [
+    ...keys.clients.map((c) => `  ${c.clientId.padEnd(12)} ${c.wallet.address}  needs USDC`),
+    `  ${"gateway".padEnd(12)} ${keys.gateway.wallet.address}  needs USDC and ETH`,
+    ...keys.nodes.map((n) => `  ${`node${n.nodeId}`.padEnd(12)} ${n.wallet.address}  needs ETH`),
+  ];
   return (
     `distKey: wrote ${names.length} files to ${dir}\n` +
     `  threshold=${keys.threshold} total=${keys.total} clients=${keys.clients.map((c) => c.clientId).join(",")}\n` +
-    names.map((n) => `  ${path.join(dir, n)}\n`).join("")
+    names.map((n) => `  ${path.join(dir, n)}\n`).join("") +
+    `wallets to fund on the network the services are configured for:\n${wallets.join("\n")}\n`
   );
 }
 

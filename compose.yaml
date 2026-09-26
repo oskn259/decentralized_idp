@@ -37,13 +37,15 @@ services:
     ports: ["4003:4000"]
     volumes: ["./secrets:/secrets:ro", "node3-data:/data"]
 
+  # Paid endpoints settle on the chain NETWORK names (Base Sepolia by default); the wallets in
+  # secrets/ must hold USDC and ETH there first. distKey prints the addresses.
   gateway:
     build: { context: ., dockerfile: projects/gateway/Dockerfile }
     environment:
       ISSUER: *issuer
       NODE_URLS: http://node1:4000,http://node2:4000,http://node3:4000
       RP_ORIGIN: http://localhost:3001
-    volumes: ["./secrets:/secrets:ro"]
+    volumes: ["./secrets:/secrets:ro", "gateway-data:/data"]
     ports: ["3000:3000", "3001:3001"]
     depends_on:
       node1: { condition: service_healthy }
@@ -58,6 +60,7 @@ services:
     depends_on: { gateway: { condition: service_healthy } }
 
 volumes:
+  gateway-data:
   node1-data:
   node2-data:
   node3-data:

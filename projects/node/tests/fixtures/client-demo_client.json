@@ -1,0 +1,14 @@
+{
+  "client_id": "demo_client",
+  "key": {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "x": "qCxTyL6E-sDsazO450Qw0y8U5g-lJ-r66v8f4u0P6_E",
+    "d": "ih9qfgmErTFOEhQzhERdTWdQ4hI2gKuYqaFCfE2lQ0Y",
+    "kid": "demo_client-key-1"
+  },
+  "wallet": {
+    "address": "0xCF07D3f357eaf74102847F49186F1f2597A2b2d9",
+    "privateKey": "0xa3ef182bee1925f3e789d6c1102700f3051f731ef477f00e9e3e42acdb5b6aa9"
+  }
+}

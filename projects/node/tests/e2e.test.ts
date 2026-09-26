@@ -1,21 +1,27 @@
 import crypto from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ed25519 } from "@noble/curves/ed25519";
-import { FakeClock, TEST_ISSUER, readFixtureJson, testPublicUrl } from "./helpers/build-node.js";
+import { decodePaymentRequiredHeader, decodePaymentResponseHeader } from "@x402/core/http";
+import { FakeClock, TEST_ISSUER, failingSettler, readFixtureJson, testPublicUrl } from "./helpers/build-node.js";
 import { DEFAULT_KEY_ID } from "../src/domain/value/node-identity.js";
 import {
   ClientSession,
+  GATEWAY_ID,
+  clientAssertion,
   decodeJwt,
   fixtureUserShares,
   newDPoPKeyPair,
+  postSign,
   prepareSign,
   registerBody,
   registerOverHttp,
   signBody,
   signOnOverHttp,
   signOverHttp,
+  paymentSignature,
+  withAssertion,
 } from "./helpers/client.js";
-import { FixtureNode, getJson, postJson, startAllNodes, stopAll } from "./helpers/http-server.js";
+import { FixtureNode, StartNodeOptions, getJson, postJson, startAllNodes, startNodeFromFixture, stopAll } from "./helpers/http-server.js";
 import { base64UrlDecode, base64UrlEncode } from "@decentralized-idp/sdk/base64url";
 import { aggregateSignatureShares, computeGroupCommitment } from "@decentralized-idp/sdk/frost";
 import { hexToBytes } from "@decentralized-idp/sdk/hex";
@@ -28,7 +34,8 @@ import { blind } from "@decentralized-idp/sdk/toprf";
  * gives every node its share of alice and bob before any test runs. `/commit` and
  * `/sign-on` build the assertion (the authorization code); `/commit` (twice) and `/sign`
  * turn it into an access token and a refresh token. The nodes share one `FakeClock`, so
- * the 30-second assertion window can be tested without a real 30-second wait.
+ * the 30-second assertion window can be tested without a real 30-second wait. Every `/sign`
+ * is sent as the fixture gateway, which pays when a node asks; the chain is a fake settler.
  */
 
 const GROUP = readFixtureJson("group.json");
@@ -257,7 +264,7 @@ describe("access token over HTTP", () => {
     const forged = `${h}.${base64UrlEncode(JSON.stringify(payload))}.${sig}`;
 
     const attempt = await prepare({ nodes: [nodes[0]], session, assertionOverride: forged });
-    const res = await postJson(nodes[0].url, "/sign", signBody(attempt));
+    const res = await postSign(nodes[0], signBody(attempt));
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("Invalid Ed25519 signature");
   });
@@ -279,7 +286,7 @@ describe("access token over HTTP", () => {
       cnfJkt: newDPoPKeyPair().cnfJkt,
     };
 
-    const responses = await Promise.all(nodes.map((n) => postJson(n.url, "/sign", { ...signBody(attempt), request: tampered })));
+    const responses = await Promise.all(nodes.map((n) => postSign(n, { ...signBody(attempt), request: tampered })));
     expect(responses.map((r) => r.status)).toEqual([200, 200, 200]);
 
     // Every node signed the assertion's own claims, so the client rebuilds and verifies
@@ -305,22 +312,22 @@ describe("access token over HTTP", () => {
     const session = await liveSession();
 
     const wrongKey = await prepare({ nodes: [nodes[0]], session, keyPairOverride: newDPoPKeyPair().keyPair });
-    const wrongKeyRes = await postJson(nodes[0].url, "/sign", signBody(wrongKey));
+    const wrongKeyRes = await postSign(nodes[0], signBody(wrongKey));
     expect(wrongKeyRes.status).toBe(400);
     expect(wrongKeyRes.body.error).toContain("thumbprint mismatch");
 
     const wrongHtu = await prepare({ nodes: [nodes[0]], session, proofHtuOverride: "http://evil.test/token" });
-    const wrongHtuRes = await postJson(nodes[0].url, "/sign", signBody(wrongHtu));
+    const wrongHtuRes = await postSign(nodes[0], signBody(wrongHtu));
     expect(wrongHtuRes.status).toBe(400);
     expect(wrongHtuRes.body.error).toContain("htu mismatch");
 
     const stale = await prepare({ nodes: [nodes[0]], session, dpopIatOverride: clock.nowSeconds() - 120 });
-    const staleRes = await postJson(nodes[0].url, "/sign", signBody(stale));
+    const staleRes = await postSign(nodes[0], signBody(stale));
     expect(staleRes.status).toBe(400);
     expect(staleRes.body.error).toContain("timestamp expired or out of allowed window");
 
     const tooLong = await prepare({ nodes: [nodes[0]], session, lifetimeSeconds: 3601 });
-    const tooLongRes = await postJson(nodes[0].url, "/sign", signBody(tooLong));
+    const tooLongRes = await postSign(nodes[0], signBody(tooLong));
     expect(tooLongRes.status).toBe(400);
     expect(tooLongRes.body.error).toContain("Access token lifetime 3601s out of range");
   });
@@ -328,12 +335,12 @@ describe("access token over HTTP", () => {
   it("does not track jti: the same DPoP proof twice both succeed, each bound to the caller's own key", async () => {
     const session = await liveSession();
     const attempt = await prepare({ nodes, session });
-    const first = await postJson(nodes[0].url, "/sign", signBody(attempt));
+    const first = await postSign(nodes[0], signBody(attempt));
     expect(first.status).toBe(200);
 
     // A fresh round with the exact same DPoP proof reused.
     const again = await prepare({ nodes: [nodes[0]], session, dpopProofOverride: attempt.request.dpopProof as string });
-    const againRes = await postJson(nodes[0].url, "/sign", signBody(again));
+    const againRes = await postSign(nodes[0], signBody(again));
     expect(againRes.status).toBe(200);
   });
 
@@ -342,7 +349,7 @@ describe("access token over HTTP", () => {
     clock.advance(31);
     try {
       const attempt = await prepare({ nodes: [nodes[0]], session });
-      const res = await postJson(nodes[0].url, "/sign", signBody(attempt));
+      const res = await postSign(nodes[0], signBody(attempt));
       expect(res.status).toBe(400);
       expect(res.body.error).toContain("rejected assertion");
     } finally {
@@ -391,7 +398,7 @@ describe("refresh grant over HTTP", () => {
       refreshToken: first.refresh_token,
       keyPairOverride: newDPoPKeyPair().keyPair,
     });
-    const res = await postJson(nodes[0].url, "/sign", signBody(foreign));
+    const res = await postSign(nodes[0], signBody(foreign));
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("thumbprint mismatch");
   });
@@ -410,7 +417,7 @@ describe("refresh grant over HTTP", () => {
       [access_token, "typ at+jwt is not refresh+jwt"],
     ] as const) {
       const attempt = await prepare({ nodes, session, grant: "refresh_token", refreshToken: token });
-      const res = await postJson(nodes[0].url, "/sign", signBody(attempt));
+      const res = await postSign(nodes[0], signBody(attempt));
       expect(res.status, reason).toBe(400);
       expect(res.body.error).toContain(reason);
     }
@@ -436,5 +443,121 @@ describe("concurrent rounds", () => {
     expect(verifyToken(tokens[1].access_token)).toBe(true);
     expect(decodeJwt(tokens[0].access_token).payload.sub).toBe("usr_alice_12345");
     expect(decodeJwt(tokens[1].access_token).payload.sub).toBe("usr_bob_67890");
+  });
+});
+
+describe("payment for /sign", () => {
+  let node: FixtureNode;
+
+  /** node-1 on alice's users file, with no credit, unless told otherwise. */
+  async function startPaidNode(options: StartNodeOptions = {}): Promise<FixtureNode> {
+    node = await startNodeFromFixture("node-1.json", { clock, usersFile: nodes[0].usersFile, ...options });
+    return node;
+  }
+
+  afterEach(async () => {
+    await node?.close();
+  });
+
+  const credit = () => node.node.billing.credits.balance(GATEWAY_ID);
+  const signOn = async () => signBody(await prepare({ nodes: [node], session: await liveSession() }));
+  const send = (body: Record<string, unknown>, headers: Record<string, string> = {}) => postJson(node.url, "/sign", body, { headers });
+
+  /** A first /sign answered 402, then paid for. */
+  async function pay(body: Record<string, unknown>) {
+    const refused = await send(body);
+    expect(refused.status).toBe(402);
+    return send(body, { "PAYMENT-SIGNATURE": paymentSignature(refused) });
+  }
+
+  it("asks a gateway without credit for 2 requests' worth, to the node's wallet", async () => {
+    await startPaidNode();
+    const res = await send(withAssertion(node, await signOn()));
+
+    expect(res.status).toBe(402);
+    expect(res.body.error).toBe("payment required");
+    const required = decodePaymentRequiredHeader(res.headers.get("PAYMENT-REQUIRED")!);
+    expect(required.accepts[0]).toMatchObject({
+      scheme: "exact",
+      network: "eip155:84532",
+      amount: "6000",
+      payTo: readFixtureJson("node-1.json").wallet.address,
+    });
+  });
+
+  it("serves the paid retry on the same rounds, returns the settlement, and leaves one credit", async () => {
+    await startPaidNode();
+    const res = await pay(withAssertion(node, await signOn()));
+
+    expect(res.status).toBe(200);
+    expect(decodePaymentResponseHeader(res.headers.get("PAYMENT-RESPONSE")!)).toMatchObject({ success: true, transaction: "0x" + "ab".repeat(32) });
+    expect(credit()).toBe(1);
+  });
+
+  it("serves the next /sign on credit, then asks again", async () => {
+    await startPaidNode();
+    expect((await pay(withAssertion(node, await signOn()))).status).toBe(200);
+
+    const onCredit = await send(withAssertion(node, await signOn()));
+    expect(onCredit.status).toBe(200);
+    expect(onCredit.headers.get("PAYMENT-RESPONSE")).toBeNull();
+    expect(credit()).toBe(0);
+
+    expect((await send(withAssertion(node, await signOn()))).status).toBe(402);
+  });
+
+  it("refuses a caller that is not a registered gateway with 400, before credit or rounds are looked at", async () => {
+    await startPaidNode();
+    const body = await signOn();
+    const otherKey = ed25519.utils.randomPrivateKey();
+    for (const forged of [clientAssertion(node, {}, otherKey), clientAssertion(node, { aud: "http://node2.test" })]) {
+      const res = await send(withAssertion(node, body, forged));
+      expect(res.status, forged).toBe(400);
+      expect(res.body.error).toMatch(/^client_assertion: /);
+    }
+
+    // Credit is still untouched and the rounds still open: the real gateway pays and is served.
+    expect(credit()).toBe(0);
+    expect((await pay(withAssertion(node, body))).status).toBe(200);
+  });
+
+  it("charges nothing for a /sign the node refuses", async () => {
+    await startPaidNode();
+    const session = await liveSession();
+    const [h, p, sig] = session.assertion.split(".");
+    const payload = JSON.parse(Buffer.from(p, "base64url").toString("utf8"));
+    payload.sub = "usr_bob_67890";
+    const forged = `${h}.${base64UrlEncode(JSON.stringify(payload))}.${sig}`;
+    const tampered = () => prepare({ nodes: [node], session, assertionOverride: forged }).then((a) => withAssertion(node, signBody(a)));
+
+    const paid = await pay(await tampered());
+    expect(paid.status).toBe(400);
+    expect(paid.body.error).toContain("Invalid Ed25519 signature");
+    expect(paid.headers.get("PAYMENT-RESPONSE")).not.toBeNull();
+    expect(credit()).toBe(2);
+
+    expect((await send(await tampered())).status).toBe(400);
+    expect(credit()).toBe(2);
+  });
+
+  it("stays at 402 when the payment does not settle", async () => {
+    await startPaidNode({ settler: failingSettler });
+    const res = await pay(withAssertion(node, await signOn()));
+
+    expect(res.status).toBe(402);
+    expect(res.body.error).toContain("settlement failed");
+    expect(res.body.error).toContain("insufficient_funds");
+    expect(credit()).toBe(0);
+  });
+
+  it("keeps the credit across a restart on the same credits file", async () => {
+    const first = await startPaidNode();
+    expect((await pay(withAssertion(node, await signOn()))).status).toBe(200);
+    await first.close();
+
+    await startPaidNode({ creditsFile: first.creditsFile });
+    expect(credit()).toBe(1);
+    expect((await send(withAssertion(node, await signOn()))).status).toBe(200);
+    expect(credit()).toBe(0);
   });
 });

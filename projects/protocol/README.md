@@ -45,7 +45,7 @@ base64url のデコーダは、アルファベット外の文字（`=`、`+`、`
 | POST | `/register` | 新しいユーザーのこのノード向けシェアを、ブラウザから直接受け取る | [`register.request.json`](schema/node-api/register.request.json) | [`register.response.json`](schema/node-api/register.response.json) |
 | POST | `/commit` | FROST ラウンド 1 を開く | [`commit.request.json`](schema/node-api/commit.request.json) | [`commit.response.json`](schema/node-api/commit.response.json) |
 | POST | `/sign-on` | TOPRF 評価と、認証アサーションへの FROST ラウンド 2 | [`sign-on.request.json`](schema/node-api/sign-on.request.json) | [`sign-on.response.json`](schema/node-api/sign-on.response.json) |
-| POST | `/sign` | アクセストークンとリフレッシュトークンへの FROST ラウンド 2 | [`sign.request.json`](schema/node-api/sign.request.json) | [`sign.response.json`](schema/node-api/sign.response.json) |
+| POST | `/sign` | アクセストークンとリフレッシュトークンへの FROST ラウンド 2。有料（[支払い](#支払い)） | [`sign.request.json`](schema/node-api/sign.request.json) | [`sign.response.json`](schema/node-api/sign.response.json) |
 
 スキーマが表せない制約:
 
@@ -55,6 +55,7 @@ base64url のデコーダは、アルファベット外の文字（`=`、`+`、`
 - `/sign-on` の `nonce` は、値がないときはメンバーごと省く。`null` は拒否する（署名対象のペイロードに `nonce` を含めるか否かが変わるため）
 - `/sign-on` の `scope` は空文字列でもよい
 - `/sign` は `grant` が `authorization_code` なら `assertion`、`refresh_token` なら `refreshToken` が空でない文字列であることを要求し、もう一方は読まない
+- `/sign` の `clientAssertion` はゲートウェイの `private_key_jwt`（RFC 7523）。`iss` = `sub` = `gateways.json` にある `client_id`、`aud` = そのノードの `publicUrl`、`exp` が未来、`jti` あり、署名がその公開鍵で通ること。通らなければ 400。ノードが課金する相手はこの `client_id`
 - `/sign` の `roundId` と `refreshRoundId` は異なるラウンドでなければならない（1 組のナンスで 2 つのメッセージに署名すると `s_i` が漏れる）
 - `/sign-on` 応答の `sub` は、ノード自身のユーザーレコードから取る。リクエストには含まれない
 - `/sign` 応答の `at`・`rt` は平文の署名シェア `z_i`。`/sign-on` の `z_i` は `ct_i` の中にあり、`h_i` を持つ者しか読めない
@@ -64,6 +65,7 @@ base64url のデコーダは、アルファベット外の文字（`=`、`+`、`
 | ステータス | 意味 |
 |---|---|
 | 400 | ボディが不正（`body.<field> <理由>` の形。例 `body.request.blinded must decode to 32 bytes, got 31`）、または処理の拒否（未知のユーザー、期限切れ、署名不一致、ラウンドが見つからない等） |
+| 402 | `/sign` の呼び出し元に残高がない。`PAYMENT-REQUIRED` ヘッダに要求を載せる |
 | 409 | `/register` の `username` か `sub` がすでにある |
 | 404 | 未知のパスまたはメソッド |
 | 500 | 想定外のエラー |
@@ -169,6 +171,17 @@ H1(pw) = hash_to_ristretto255( SHA-512( "PASTA-TOPRF-H1" ‖ u64LE(len(pw)) ‖ 
 
 クライアントは自分で導いた `h_i` で復号する。パスワードが違えば `h_i` が違い、タグ検証で失敗する。ノードはパスワードの正誤を知らない。
 
+## 支払い
+
+x402 v2（`exact` スキーム、USDC）による前払いクレジット。ノードは `/sign` の呼び出し元（`clientAssertion` の `client_id`）ごとに残高（残り回数）を持つ。
+
+- 残高があれば要求を処理し、成功したときだけ 1 減らす。失敗した要求は無料
+- 残高がなければ 402 を返す。`PAYMENT-REQUIRED` ヘッダに `PaymentRequired`（base64 の JSON）を載せる。`accepts` は 1 件で、`scheme: "exact"`、`network`（CAIP-2、例 `eip155:84532`）、`asset`（USDC のコントラクト）、`amount`（`単価 × 回数`、USDC の最小単位）、`payTo`（ノードのウォレット）、`extra: { name, version }`（USDC の EIP-712 ドメイン）
+- 呼び出し元は同じ要求に `PAYMENT-SIGNATURE` ヘッダ（EIP-3009 `transferWithAuthorization` への EIP-712 署名を含む `PaymentPayload`）を添えて再送する。ノードは自分で検証し、チェーンに送って確定させてから残高に回数を足し、要求を処理する。決済の記録は `PAYMENT-RESPONSE` ヘッダで返す
+- 単価と回数はノードの設定。ホワイトペーパーの単価は `/sign` 1 回 0.003 USDC（3000）
+
+ゲートウェイの `/token` も同じ規則で RP に課金する（単価 0.01 USDC）。そちらはゲートウェイの README の範囲。
+
 ## DPoP
 
 RFC 9449 を Ed25519 で使う。`/sign` に提示されるプルーフはゲートウェイとノードの両方が同じ規則で検証する。
@@ -230,13 +243,22 @@ sdk のゲートウェイは `claims.iat = now`、`claims.exp = now + 3600` で�
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "nodeId": 1,
   "threshold": 2,
   "total": 3,
   "groupPublicKey": "<hex 64桁: Y>",
-  "secretKeyShare": "<hex 64桁: s_i>"
+  "secretKeyShare": "<hex 64桁: s_i>",
+  "wallet": { "address": "0x…", "privateKey": "0x…" }
 }
+```
+
+`wallet` はノードが支払いを受け取り、決済のガスを払う EVM アカウント。
+
+`gateways.json`（ノードが読む）: `/sign` を呼べるゲートウェイの `client_id` と Ed25519 公開鍵。
+
+```json
+{ "version": 1, "clients": [ { "client_id": "gateway", "jwks": { "keys": [ { "kty": "OKP", "crv": "Ed25519", "x": "<base64url>", "kid": "gateway-key-1" } ] } } ] }
 ```
 
 `keyId` はすべての JWT ヘッダの `kid` であり、ゲートウェイが JWKS で公開する鍵の識別子。ユーザーの記録（`username`、`sub`、`k_i`、`h_i`）は `/register` で増え、その保存はノードの実装に任され、この仕様の対象外。

@@ -17,7 +17,12 @@
     "@decentralized-idp/sdk": "0.1.0",
     "@hono/node-server": "^2.1.1",
     "@hono/zod-validator": "^0.9.1",
+    "@noble/curves": "^1.8.1",
+    "@x402/core": "^2.27.0",
+    "@x402/evm": "^2.27.0",
+    "@x402/fetch": "^2.27.0",
     "hono": "^4.13.8",
+    "viem": "^2.56.9",
     "zod": "^4.6.5"
   },
   "devDependencies": {

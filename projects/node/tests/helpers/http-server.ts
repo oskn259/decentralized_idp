@@ -45,9 +45,10 @@ export interface StartNodeOptions extends BuildNodeOptions {
   demoLog?: DemoLog;
 }
 
-/** A fixture node, with the users file it reads and writes. */
+/** A fixture node, with the users and credits files it reads and writes. */
 export interface FixtureNode extends RunningNode {
   usersFile: string;
+  creditsFile: string;
 }
 
 /**
@@ -55,9 +56,9 @@ export interface FixtureNode extends RunningNode {
  * bury the test output, and only `demo-log.test.ts` looks at those lines.
  */
 export async function startNodeFromFixture(name: string, options: StartNodeOptions = {}): Promise<FixtureNode> {
-  const { node, config, usersFile } = buildNodeFromFixture(name, options);
+  const { node, config, usersFile, creditsFile } = buildNodeFromFixture(name, options);
   const demo = options.demoLog ?? createDemoLog({ nodeId: config.nodeId, env: { DEMO_LOG: "0" } });
-  return { ...(await startNode(node, demo)), usersFile };
+  return { ...(await startNode(node, demo)), usersFile, creditsFile };
 }
 
 /**
@@ -98,11 +99,11 @@ export async function postJson(
   url: string,
   path: string,
   body: unknown,
-  options: { raw?: string; contentType?: string } = {}
+  options: { raw?: string; contentType?: string; headers?: Record<string, string> } = {}
 ): Promise<JsonResponse> {
   const res = await fetch(`${url}${path}`, {
     method: "POST",
-    headers: { "Content-Type": options.contentType ?? "application/json" },
+    headers: { "Content-Type": options.contentType ?? "application/json", ...options.headers },
     body: options.raw ?? JSON.stringify(body),
   });
   return readJson(res);

@@ -1,9 +1,10 @@
 import crypto from "node:crypto";
-import { ristretto255 } from "@noble/curves/ed25519";
+import { ed25519, ristretto255 } from "@noble/curves/ed25519";
+import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import { MAX_ASSERTION_LIFETIME_SECONDS, REFRESH_TOKEN_LIFETIME_SECONDS } from "../../src/domain/service/credential.js";
 import { DEFAULT_KEY_ID } from "../../src/domain/value/node-identity.js";
 import { readFixtureJson } from "./build-node.js";
-import { RunningNode, postJsonOrThrow } from "./http-server.js";
+import { JsonResponse, RunningNode, postJson, postJsonOrThrow } from "./http-server.js";
 import { aeadDecrypt, deriveAeadNonce } from "@decentralized-idp/sdk/aead";
 import { base64UrlDecode, base64UrlEncode } from "@decentralized-idp/sdk/base64url";
 import { calculateJwkThumbprint, createDPoPProof, DPoPKeyPair, exportDPoPJwk, generateDPoPKeyPair } from "@decentralized-idp/sdk/dpop";
@@ -19,7 +20,8 @@ import { blind, deriveServerKey, finalize, unblind } from "@decentralized-idp/sd
  * The gateway's client roles over real HTTP: the browser half registers a user by sending
  * each node its share directly, and assembles the assertion by decrypting every `ct_i` and
  * aggregating the FROST shares; the gateway half holds the DPoP key and spends that
- * assertion, or a refresh token, for an access and a refresh token.
+ * assertion, or a refresh token, for an access and a refresh token, authenticating itself
+ * to each node and paying for `/sign` when a node asks.
  */
 
 export interface RegisterParams {
@@ -221,6 +223,40 @@ function credentialClaims(credential: string): { sub: string; client_id: string;
   };
 }
 
+/** The gateway of `fixtures/gateways.json`, with its private key from `fixtures/gateway.json`. */
+const GATEWAY = readFixtureJson("gateway.json");
+export const GATEWAY_ID: string = GATEWAY.client_id;
+const GATEWAY_KEY = base64UrlDecode(GATEWAY.key.d);
+
+/** The gateway's `private_key_jwt` for `/sign` on `node`, stamped with the node's own clock. */
+export function clientAssertion(node: RunningNode, overrides: Record<string, unknown> = {}, secretKey: Uint8Array = GATEWAY_KEY): string {
+  const iat = node.node.clock.nowSeconds();
+  const { signingInput, headerB64, payloadB64 } = createSigningInput({
+    header: { alg: "EdDSA" },
+    payload: { iss: GATEWAY_ID, sub: GATEWAY_ID, aud: node.node.identity.publicUrl, jti: crypto.randomUUID(), iat, exp: iat + 60, ...overrides },
+  });
+  return assembleJwt(headerB64, payloadB64, ed25519.sign(signingInput, secretKey));
+}
+
+/** A `/sign` body carrying `clientAssertion` (the gateway's own, for `node`, unless given). */
+export function withAssertion(node: RunningNode, body: Record<string, any>, assertion: string = clientAssertion(node)): Record<string, unknown> {
+  return { ...body, request: { ...body.request, clientAssertion: assertion } };
+}
+
+/** `PAYMENT-SIGNATURE` answering a 402: its first requirement, accepted as is. The fake settlers ignore `payload`. */
+export function paymentSignature(refused: JsonResponse): string {
+  const required = decodePaymentRequiredHeader(refused.headers.get("PAYMENT-REQUIRED") ?? "");
+  return encodePaymentSignatureHeader({ x402Version: 2, accepted: required.accepts[0], payload: {} });
+}
+
+/** `/sign` as the gateway sends it: with its client assertion, paying and retrying once on a 402. */
+export async function postSign(node: RunningNode, body: Record<string, unknown>): Promise<JsonResponse> {
+  const signed = withAssertion(node, body);
+  const first = await postJson(node.url, "/sign", signed);
+  if (first.status !== 402) return first;
+  return postJson(node.url, "/sign", signed, { headers: { "PAYMENT-SIGNATURE": paymentSignature(first) } });
+}
+
 /** Opens both rounds and builds the `/sign` request the gateway would send. */
 export async function prepareSign(params: SignParams): Promise<SignAttempt> {
   const session = params.session;
@@ -326,7 +362,13 @@ export async function signOverHttp(params: SignParams): Promise<{
   refreshShares: string[];
 }> {
   const attempt = await prepareSign(params);
-  const responses: SignResponseWire[] = await Promise.all(params.nodes.map((n) => postJsonOrThrow(n.url, "/sign", signBody(attempt))));
+  const responses: SignResponseWire[] = await Promise.all(
+    params.nodes.map(async (n) => {
+      const res = await postSign(n, signBody(attempt));
+      if (res.status !== 200) throw new Error(`POST /sign -> ${res.status}: ${res.text}`);
+      return res.body;
+    })
+  );
 
   const atParts = createSigningInput({ header: { alg: "EdDSA", typ: "at+jwt", kid: DEFAULT_KEY_ID }, payload: attempt.atPayload });
   const rtParts = createSigningInput({ header: { alg: "EdDSA", typ: "refresh+jwt", kid: DEFAULT_KEY_ID }, payload: attempt.rtPayload });

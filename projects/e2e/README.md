@@ -29,6 +29,8 @@ npm run qa-gate
 
 `GW` と `RP` で URL を変えられる（compose の issuer は `http://localhost:3000` なので、通常は変えない）。
 
+`/token` は有料で、compose は Base Sepolia で決済する。distKey が作ったウォレット（`docker compose logs distkey` にアドレス）に USDC と ETH を入れてからでないと、サインインの最後（トークン取得）で失敗する。初回のサインインでは rp が 1 USDC、gateway が各ノードに 0.3 USDC を前払いするので、その分の決済（各 10〜20 秒）が加わる。
+
 鍵ファイルの形式が違うブランチから来たときは、ノードが古い `secrets/` で起動に失敗する。`docker compose down -v && rm -rf secrets` で作り直す。
 
 - `tests/helpers/compose.ts`: `docker compose` の up・stop・復旧

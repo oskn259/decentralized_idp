@@ -1,0 +1,14 @@
+{
+  "client_id": "gateway",
+  "key": {
+    "kty": "OKP",
+    "crv": "Ed25519",
+    "x": "PzJAsPruIkKG-sOiWY6BqonBZdhRtJXeOMzkYFt9HGU",
+    "d": "oBdkza05a6JoHWZ0pftJYgeTGzKF88HenciDXjtV9ew",
+    "kid": "gateway-key-1"
+  },
+  "wallet": {
+    "address": "0xb8d3635D5544AB1a01B3a64663f5f5D9695383e5",
+    "privateKey": "0x473ec73824b883eab6d045d732baa8d67985661874f12e4d52e3aef4e507b182"
+  }
+}

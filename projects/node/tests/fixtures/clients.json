@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "clients": [
+    {
+      "client_id": "demo_client",
+      "jwks": {
+        "keys": [
+          {
+            "kty": "OKP",
+            "crv": "Ed25519",
+            "x": "qCxTyL6E-sDsazO450Qw0y8U5g-lJ-r66v8f4u0P6_E",
+            "kid": "demo_client-key-1",
+            "use": "sig",
+            "alg": "EdDSA"
+          }
+        ]
+      }
+    }
+  ]
+}

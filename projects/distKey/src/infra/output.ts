@@ -16,6 +16,8 @@ export const KEY_ID = "pasta-group-key-1";
 
 const GROUP_FILE = "group.json";
 const CLIENTS_FILE = "clients.json";
+const GATEWAY_FILE = "gateway.json";
+const GATEWAYS_FILE = "gateways.json";
 
 function nodeFileName(nodeId: number): string {
   return `node-${nodeId}.json`;
@@ -26,7 +28,7 @@ function clientFileName(clientId: string): string {
 }
 
 export function outputFileNames(total: number, clientIds: string[]): string[] {
-  return [GROUP_FILE, ...Array.from({ length: total }, (_, i) => nodeFileName(i + 1)), CLIENTS_FILE, ...clientIds.map(clientFileName)];
+  return [GROUP_FILE, ...Array.from({ length: total }, (_, i) => nodeFileName(i + 1)), CLIENTS_FILE, ...clientIds.map(clientFileName), GATEWAY_FILE, GATEWAYS_FILE];
 }
 
 export interface OutputFile {
@@ -35,20 +37,27 @@ export interface OutputFile {
 }
 
 export function outputFiles(keys: DistributedKeys): OutputFile[] {
-  return [groupFile(keys), ...keys.nodes.map((node) => nodeFile(keys, node)), clientsFile(keys), ...keys.clients.map(clientFile)];
+  return [
+    groupFile(keys),
+    ...keys.nodes.map((node) => nodeFile(keys, node)),
+    clientsFile(CLIENTS_FILE, keys.clients),
+    ...keys.clients.map((client) => clientFile(clientFileName(client.clientId), client)),
+    clientFile(GATEWAY_FILE, keys.gateway),
+    clientsFile(GATEWAYS_FILE, [keys.gateway]),
+  ];
 }
 
 function keyId(client: ClientKeys): string {
   return `${client.clientId}-key-1`;
 }
 
-/** Read by the gateway: every relying party's public key, for `private_key_jwt`. */
-function clientsFile(keys: DistributedKeys): OutputFile {
+/** The public keys a server checks `private_key_jwt` against: clients.json for the gateway, gateways.json for the nodes. */
+function clientsFile(name: string, clients: ClientKeys[]): OutputFile {
   return {
-    name: CLIENTS_FILE,
+    name,
     content: json({
       version: 1,
-      clients: keys.clients.map((client) => ({
+      clients: clients.map((client) => ({
         client_id: client.clientId,
         jwks: { keys: [{ ...exportDPoPJwk(client.keyPair.publicKey), kid: keyId(client), use: "sig", alg: "EdDSA" }] },
       })),
@@ -56,13 +65,14 @@ function clientsFile(keys: DistributedKeys): OutputFile {
   };
 }
 
-/** Read by that relying party: its private key as a JWK. */
-function clientFile(client: ClientKeys): OutputFile {
+/** Read by that party alone: its private key as a JWK, and its wallet. */
+function clientFile(name: string, client: ClientKeys): OutputFile {
   return {
-    name: clientFileName(client.clientId),
+    name,
     content: json({
       client_id: client.clientId,
       key: { ...exportDPoPJwk(client.keyPair.publicKey), d: base64UrlEncode(client.keyPair.privateKey), kid: keyId(client) },
+      wallet: client.wallet,
     }),
   };
 }
@@ -86,12 +96,13 @@ function nodeFile(keys: DistributedKeys, node: NodeKeys): OutputFile {
   return {
     name: nodeFileName(node.nodeId),
     content: json({
-      version: 2,
+      version: 3,
       nodeId: node.nodeId,
       threshold: keys.threshold,
       total: keys.total,
       groupPublicKey: bytesToHex(keys.groupPublicKey),
       secretKeyShare: bigIntToHex(node.secretKeyShare),
+      wallet: node.wallet,
     }),
   };
 }

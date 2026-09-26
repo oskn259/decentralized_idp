@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "clients": [
+    {
+      "client_id": "gateway",
+      "jwks": {
+        "keys": [
+          {
+            "kty": "OKP",
+            "crv": "Ed25519",
+            "x": "PzJAsPruIkKG-sOiWY6BqonBZdhRtJXeOMzkYFt9HGU",
+            "kid": "gateway-key-1",
+            "use": "sig",
+            "alg": "EdDSA"
+          }
+        ]
+      }
+    }
+  ]
+}

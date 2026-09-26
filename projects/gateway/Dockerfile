@@ -48,6 +48,8 @@ COPY --from=build /app/projects/sdk/dist projects/sdk/dist
 COPY --from=build /app/projects/gateway/package.json projects/gateway/
 COPY --from=build /app/projects/gateway/dist projects/gateway/dist
 COPY --from=build /app/projects/idpFront/dist ui
+# CREDITS_FILE lives here; a volume mounted over it keeps the image's ownership.
+RUN mkdir -p /data && chown node:node /data
 
 USER node
 EXPOSE 3000

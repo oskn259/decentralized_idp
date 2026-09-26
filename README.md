@@ -39,7 +39,17 @@ open http://localhost:3001            # rp の「Sign in」から。ログイン
 
 各コンポーネントが何を持ち何を持たないかは、それぞれの標準出力に1〜2行のトレースとして出る。`scripts/demo-tmux.sh` が5コンポーネントを並べて表示する。外側から一通り確認するのは [`projects/e2e`](projects/e2e)。
 
-鍵を作り直すときは `docker compose down -v && rm -rf secrets` の後に `up`（`-v` で各ノードのユーザー記録も消える）。`secrets/` は gitignore 済み。
+トークンの取得は有料（x402、USDC）。compose は Base Sepolia で決済するので、初回の `up` で distKey が作ったウォレットに入金してからでないとトークンは取れない。アドレスは `docker compose logs distkey` に出る。
+
+| ウォレット | 要るもの | 理由 |
+|---|---|---|
+| rp（`demo_client`） | USDC | gateway の `/token` に 100 回分（1 USDC）を前払いする |
+| gateway | USDC と ETH | ノードの `/sign` に 100 回分（0.3 USDC）ずつ前払いし、RP からの支払いを決済するガスを払う |
+| node1〜3 | ETH | gateway からの支払いを決済するガスを払う |
+
+Base Sepolia の ETH は Coinbase などの faucet、USDC は Circle の faucet で得られる。
+
+鍵を作り直すときは `docker compose down -v && rm -rf secrets` の後に `up`（`-v` で各ノードのユーザー記録と残高も消える。ウォレットも新しくなるので入金し直し）。`secrets/` は gitignore 済み。
 
 ## 流れ
 
@@ -70,6 +80,7 @@ sequenceDiagram
 - アサーションは 30 秒だけ有効。リプレイで得られるトークンも同じ DPoP 鍵に束縛されるので、鍵を持たない者には使えない
 - リフレッシュトークンもノードのグループ署名付き JWT。gateway はどのトークンも保持しない
 - ノードが 1 台落ちても t=2 で続く。2 台落ちると `quorum 1 < 2` で拒否される
+- 支払いはホワイトペーパー 3 章のとおり。RP は `/token` の成功 1 回につき 0.01 USDC、gateway はノードの `/sign` 1 回につき 0.003 USDC を、それぞれ 100 回分まとめて前払いする（残高がなくなったときだけ 402）。受け取る側が自分で検証と決済を行い、失敗した要求は無料。ノードが支払いを受け取った後に発行全体が失敗した分は gateway が負う
 - 登録はログイン画面の「Create account」から。ブラウザが `sub` を採番し、TOPRF 鍵 k を引いて t-of-n に分割し、`k_i` と `h_i` をノード i の `/register` に直接送る（PASTA と同じ）。n 台全部が受理したら完了。gateway は `GET /api/pasta/nodes` でノードの URL を教えるだけで、登録を見ない。ノードは username と `sub` の一意性を検査し、記録を自分の `/data` に保存する。compose ではノードを `localhost:4001..4003` に公開している
 
 ## 開発

@@ -5,12 +5,15 @@ import { html } from "hono/html";
 import type { HtmlEscapedString } from "hono/utils/html";
 import { JWTPayload, createRemoteJWKSet, jwtVerify } from "jose";
 import * as oauth from "openid-client";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
+import { privateKeyToAccount } from "viem/accounts";
 
 /**
  * A relying party built from ordinary OAuth client libraries only: `openid-client` for the
  * authorization code flow with DPoP (RFC 9449) and private_key_jwt client authentication
- * (RFC 7523), `jose` to verify the access token against the gateway's JWKS. Nothing here
- * knows about PASTA, FROST or the nodes.
+ * (RFC 7523), `jose` to verify the access token against the gateway's JWKS, and the x402
+ * fetch wrapper to pay for tokens. Nothing here knows about PASTA, FROST or the nodes.
  */
 
 export interface RpOptions {
@@ -21,6 +24,8 @@ export interface RpOptions {
   clientId: string;
   /** Signs the `client_assertion` that authenticates this client at the token endpoint (private_key_jwt). */
   clientKey: { key: CryptoKey; kid?: string };
+  /** Pays the gateway's 402s over x402: USDC on `network`, signed by this key. */
+  wallet: { privateKey: `0x${string}`; network: `${string}:${string}` };
   scope: string;
 }
 
@@ -44,6 +49,10 @@ export async function createRpApp(options: RpOptions): Promise<Hono> {
     algorithm: "oauth2",
     execute: options.gatewayUrl.startsWith("http:") ? [oauth.allowInsecureRequests] : [],
   });
+  // The token endpoint is paid: a 402 is answered by paying for a batch of requests, then retried.
+  const payer = new x402Client().register(options.wallet.network, new ExactEvmScheme(privateKeyToAccount(options.wallet.privateKey)));
+  const fetchWithPayment = wrapFetchWithPayment(fetch, payer);
+  config[oauth.customFetch] = (url, init) => fetchWithPayment(url, init as RequestInit);
   const jwks = createRemoteJWKSet(new URL(config.serverMetadata().jwks_uri!));
   const redirectUri = `${options.rpUrl}/callback`;
 
