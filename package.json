@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": ["projects/*"],
   "scripts": {
-    "qa-gate": "npm run qa-gate --workspaces"
+    "qa-gate": "npm run qa-gate --workspaces",
+    "watch": "npm run start -w projects/watch --"
   }
 }

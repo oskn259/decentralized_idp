@@ -1,0 +1,23 @@
+{
+  "name": "@decentralized-idp/watch",
+  "version": "0.1.0",
+  "description": "Demo aid: shows the USDC balance of every wallet distKey made, refreshed every few seconds",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "qa-gate": "npm run build --prefix ../sdk && npm run typecheck && npm run build"
+  },
+  "dependencies": {
+    "@decentralized-idp/sdk": "0.1.0",
+    "viem": "^2.56.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}

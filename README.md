@@ -24,6 +24,7 @@
 | [`projects/gateway`](projects/gateway) | OAuth 認可サーバー。`/authorize` `/token` `/jwks.json` とログインページの配信 |
 | [`projects/idpFront`](projects/idpFront) | ログインページ（gateway が配信） |
 | [`projects/rp`](projects/rp) | relying party の最小実装 |
+| [`projects/watch`](projects/watch) | デモ用。各ウォレットの USDC 残高をターミナルに並べて数秒ごとに更新する |
 | [`projects/e2e`](projects/e2e) | compose で上げたコンテナ群を、ホストの Chromium で rp からリフレッシュまで通すテスト |
 | [`docs/requirements`](docs/requirements) | コーディング方針と QA プロセス |
 | [`scripts`](scripts) | tmux デモ表示 |

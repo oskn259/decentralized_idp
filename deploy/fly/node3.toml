@@ -5,7 +5,7 @@ primary_region = "nrt"
 [env]
   ISSUER = "https://dcidp-gateway.fly.dev"
   PUBLIC_URL = "https://dcidp-node3.fly.dev"
-  CREDIT_BATCH = "10"
+  CREDIT_BATCH = "3"
 
 [http_service]
   internal_port = 4000
