@@ -126,7 +126,12 @@ export async function admit(
   if (payment.accepted.amount !== requirements.amount || payment.accepted.payTo !== requirements.payTo || payment.accepted.asset !== requirements.asset) {
     return refuse("payment does not match the requirements");
   }
-  const settled = await settler.settle(payment, requirements);
+  let settled: SettleResponse;
+  try {
+    settled = await settler.settle(payment, requirements);
+  } catch (err) {
+    return refuse(`settlement failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
   if (!settled.success) return refuse(`settlement failed: ${settled.errorReason ?? ""} ${settled.errorMessage ?? ""}`.trim());
 
   store.set(payer, store.balance(payer) + terms.batch);

@@ -20,10 +20,13 @@ RP（relying party）とブラウザが直接話す相手であり、n台ある�
   - `issue-tokens.ts` の `issueTokens`: クレデンシャルとDPoPプルーフからアクセストークンとリフレッシュトークンを組み立てる
   - `client-auth.ts` の `authenticateClient`: `private_key_jwt` のクライアント認証
   - `oauth-error.ts` の `OAuthError`: `/token` の拒否とそのエラーコード
+  - `gateway.ts` の `Billing`: `/token` の料金（`PaymentTerms`）、クライアントごとのクレジット、決済器
 - `infra`: `domain/infra` の実装
   - `group.ts` の `loadGroup`: `group.json`の読み込み
   - `clients.ts` の `loadClients`: `clients.json`の読み込み
-  - `node.ts`: ノードとHTTPで話す`HttpNode`と、起動時にノードを探す`discoverNodes`。`HttpNode`はsdkの`node-api`スキーマでエンコード・デコードし、形の崩れたノードの応答は拒否する
+  - `node.ts`: ノードとHTTPで話す`HttpNode`と、起動時にノードを探す`discoverNodes`。`HttpNode`はsdkの`node-api`スキーマでエンコード・デコードし、形の崩れたノードの応答は拒否する。`/sign`にはゲートウェイの`clientAssertion`を載せ、402なら支払って再送する`fetch`で呼ぶ
+  - `identity.ts` の `loadIdentity`: `gateway.json`の読み込みと、ノード宛ての`clientAssertion`の署名
+  - `credit-store.ts` の `FileCreditStore`: クレジット残高を`CREDITS_FILE`に保存する
   - `clock.ts` の `systemClock`: 現在時刻
 - `http`: [Hono](https://hono.dev) + `@hono/node-server` によるHTTP層
   - `server.ts`: Honoアプリの組み立て。メソッドとパスをここに並べ、各endpointを接続する
@@ -58,6 +61,12 @@ npm run dev    # tsxでsrc/main.tsを直接実行
 | `ISSUER` | `http://localhost:<PORT>` | ブラウザから見たゲートウェイのURL。全トークンの`iss`、メタデータの`issuer` |
 | `GROUP_CONFIG` | `/secrets/group.json` | distKeyが書き出す`group.json`のパス |
 | `CLIENTS_CONFIG` | `/secrets/clients.json` | distKeyが書き出す`clients.json`（登録済みクライアント）のパス |
+| `GATEWAY_KEY_FILE` | `/secrets/gateway.json` | distKeyが書き出す`gateway.json`（ゲートウェイ自身の鍵とウォレット）のパス |
+| `NETWORK` | `eip155:84532` | 支払いのチェーン（CAIP-2）。`eip155:84532`（Base Sepolia）か`eip155:8453`（Base） |
+| `RPC_URL` | `https://sepolia.base.org` | 決済をチェーンに送るRPC |
+| `PRICE_TOKEN` | `10000` | `/token` 1回の料金（USDCの最小単位。10000 = 0.01 USDC） |
+| `CREDIT_BATCH` | `100` | 1回の支払いで買う`/token`の回数 |
+| `CREDITS_FILE` | `/data/credits.json` | クライアントごとのクレジット残高の保存先 |
 | `NODE_URLS` | `http://localhost:4001,http://localhost:4002,http://localhost:4003` | カンマ区切りのノードのベースURL |
 | `LOGIN_DIST` | `/app/ui` | ビルド済みログインUIのディレクトリ |
 | `RP_ORIGIN` | `http://localhost:3001` | `/token`と`/jwks.json`へのクロスオリジンアクセスを許すorigin。デフォルトは [`../rp`](../rp) のもの |
@@ -78,7 +87,7 @@ RP から見ると RFC 6749 の認可コードフロー + RFC 9449 DPoP + RFC 90
 | GET | `/authorize` | 認可リクエストを受け、ログインページへ302 |
 | GET | `/api/pasta/nodes` | 閾値と、ブラウザから各ノードへ届く URL |
 | POST | `/api/pasta/sign-on` | ログインページからのサインオンの中継 |
-| POST | `/token` | 認可コードまたはリフレッシュトークンをアクセストークンに交換 |
+| POST | `/token` | 認可コードまたはリフレッシュトークンをアクセストークンに交換。有料（[支払い](#支払い)） |
 | GET | `/`, `/login`, `/assets/*` | ログインUIの静的配信 |
 
 ```
@@ -108,7 +117,9 @@ grant_type=refresh_token&refresh_token=<jwt>&client_assertion_type=...&client_as
 （client_id は任意。送るなら認証されたクライアントと一致すること）
 → 200 { "access_token", "token_type": "DPoP", "expires_in", "refresh_token", "scope" }
 → 400 { "error", "error_description" }   # invalid_request | invalid_client | invalid_grant | invalid_dpop_proof
+→ 402 { "error": "payment_required", "error_description" }   # クレジット切れ。PAYMENT-REQUIRED ヘッダ付き
 Cache-Control: no-store （成功・失敗とも）
+PAYMENT-SIGNATURE: <x402 の支払い>   # 402 を受けた後の再送に添える。決済できれば応答に PAYMENT-RESPONSE
 ```
 
 メタデータは `token_endpoint_auth_methods_supported: ["private_key_jwt"]`、`token_endpoint_auth_signing_alg_values_supported: ["EdDSA", "Ed25519"]` を返す。
@@ -132,6 +143,26 @@ Cache-Control: no-store （成功・失敗とも）
     "jwks": { "keys": [{ "kty": "OKP", "crv": "Ed25519", "x": "<base64url 32byte>", "kid": "demo_client-key-1", "use": "sig", "alg": "EdDSA" }] } }
 ] }
 ```
+
+## 支払い
+
+x402 v2（`exact` スキーム、USDC）の前払いクレジット。規則は [`../protocol`](../protocol/README.md#支払い) のノードの `/sign` と同じで、ゲートウェイは受け取る側と払う側の両方に立つ。
+
+- **RPに課金する**: `/token` はクライアント認証の後、そのクライアントの残高を見る。無ければ402。RPが `PAYMENT-SIGNATURE` を添えて再送すると、ゲートウェイは自分で検証してチェーンに送り（自分がファシリテーター。ガスは `wallet` から払う）、`CREDIT_BATCH` 回分を足す。トークンを発行できたときだけ1減らす。400で終わった要求は無料
+- **ノードに払う**: `/sign` の呼び出しには `gateway.json` の鍵で署名した `clientAssertion`（`iss` = `sub` = `client_id`、`aud` = ノードの `publicUrl`、`exp` = 60秒後）を載せる。ノードが402を返せば、同じ `wallet` から支払って再送する。ノード側の単価と回数はノードの設定
+- **損失はゲートウェイが負う**: `/sign` は全ノードが署名して初めてトークンになる。一部のノードに支払った（クレジットを使った）後で発行が失敗すれば、RPのクレジットは減らず、ノードに払った分はゲートウェイの持ち出しになる
+
+`GATEWAY_KEY_FILE`（distKeyが書き出す）:
+
+```json
+{ "client_id": "gateway",
+  "key": { "kty": "OKP", "crv": "Ed25519", "x": "<base64url>", "d": "<base64url>", "kid": "gateway-key-1" },
+  "wallet": { "address": "0x…", "privateKey": "0x…" } }
+```
+
+ノードはこの公開鍵を `gateways.json` で知っている。`wallet` はRPからの支払いを受け取り、ノードへ払い、決済のガスを払うEVMアカウントで、USDCとガス用のETHが要る。
+
+`CREDITS_FILE` は `{ "version": 1, "credits": { "<client_id>": <残り回数> } }`。変わるたびに丸ごと書き直す。
 
 ## 登録
 
@@ -162,12 +193,16 @@ Cache-Control: no-store （成功・失敗とも）
 [gateway] authorize client_id=demo_client nonce=3d9dbfed-7e01-4d89-80c9-75443191a34b state=st dpop_jkt=VmE7pTg_  → redirect /login
 [gateway] sign-on   round=fb3792a0 user=alice nonce=c-1  ← A AkmcCzoP  jkt VmE7pTg_  (no pw)
                     round1 (D,E)×2 (node3 unreachable, excluded) → round2 ← B_i×2 ct_i×2 (no h_i, cannot decrypt) → relayed as-is
-[gateway] token     grant=authz client=demo_client  ← code(assertion) eyJhbGci + DPoP ✓ (node3 unreachable, excluded)  → 2×/commit ×2 → /sign → access_token eyJhbGciOiJFZERT (cnf.jkt=VmE7pTg_) + refresh_token
+[gateway] pay       from=demo_client +100 credits (settled 0x3f5a9c)
+[gateway] token     grant=authz client=demo_client  ← code(assertion) eyJhbGci + DPoP ✓ (node3 unreachable, excluded)  → 2×/commit ×2 → /sign → access_token eyJhbGciOiJFZERT (cnf.jkt=VmE7pTg_) + refresh_token credits=99
 [gateway] discovery public only
 [gateway] jwks      public only
 [gateway] ✖ sign-on rejected: quorum 1 < 2 (node3 unreachable)
 [gateway] ✖ token rejected: invalid_client: client_assertion: Invalid Ed25519 signature
+[gateway] ✖ token rejected: payment_required: payment required
 ```
+
+`credits=`はそのクライアントの残り回数。ノードへの支払いはログに出さない（ノード側が出す）。
 
 `(node3 unreachable, excluded)`は、そのラウンドが1台欠けたまま閾値を満たして進んだことを示す。
 
@@ -179,7 +214,7 @@ npm run typecheck
 npm run qa-gate    # typecheck + build + テスト
 ```
 
-テストは、ノードが失敗や不正な応答を返したときの gateway の振る舞い（除外、quorum、OAuth のエラーコード）を fake ノードで見るもの、攻撃者側から見たクライアント認証（アサーション無し、未登録の鍵、他クライアントのコード、未登録の `client_id`）、依存方向の検査だけ。ユーザーから見た動作は [`../e2e`](../e2e)。
+テストは、ノードが失敗や不正な応答を返したときの gateway の振る舞い（除外、quorum、OAuth のエラーコード）を fake ノードで見るもの、攻撃者側から見たクライアント認証（アサーション無し、未登録の鍵、他クライアントのコード、未登録の `client_id`）、支払い（クレジット切れ、1バッチ分だけ使えること、拒否された要求は無料、決済の失敗）、ノードから見た `/sign` の `clientAssertion`、依存方向の検査だけ。ユーザーから見た動作は [`../e2e`](../e2e)。
 
 ```bash
 # リポジトリルートで

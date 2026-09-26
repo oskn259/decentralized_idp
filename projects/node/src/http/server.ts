@@ -14,7 +14,7 @@ import { signEndpoint } from "./endpoint/sign.js";
 import { answer } from "./answer.js";
 import { badRequest, requireJson } from "./validate.js";
 
-/** Every non-200 body is `{ "error": string }`. */
+/** Every non-200 body is `{ "error": string }`. `/sign` is paid for (see `endpoint/sign.ts`). */
 export function createNodeApp(node: IdentityNode, demo: DemoLog): Hono {
   const app = new Hono();
 
@@ -37,7 +37,7 @@ export function createNodeApp(node: IdentityNode, demo: DemoLog): Hono {
     answer(c, demo, "sign-on", () => signOnEndpoint(node, c.req.valid("json"), demo))
   );
   app.post("/sign", requireJson, zValidator("json", signRequest, badRequest(demo, "sign")), (c) =>
-    answer(c, demo, "sign", () => signEndpoint(node, c.req.valid("json"), demo))
+    answer(c, demo, "sign", () => signEndpoint(c, node, c.req.valid("json"), demo))
   );
   return app;
 }

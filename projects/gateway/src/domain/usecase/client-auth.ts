@@ -6,14 +6,20 @@ import { OAuthError } from "./oauth-error.js";
 /**
  * `private_key_jwt` (RFC 7523 §2.2, §3): the assertion must be signed by the registered key
  * of the client it names in `iss`, be addressed to this server, and not have expired.
+ * `claimedClientId`, the form's `client_id` when sent, must name the same client.
  * Returns the client id. `jti` is not tracked for replay, as with DPoP proofs.
  */
-export function authenticateClient(gateway: Gateway, clientAssertion: string): string {
+export function authenticateClient(gateway: Gateway, clientAssertion: string, claimedClientId?: string): string {
+  let clientId: string;
   try {
-    return verifiedClientId(gateway, clientAssertion);
+    clientId = verifiedClientId(gateway, clientAssertion);
   } catch (err) {
     throw new OAuthError("invalid_client", `client_assertion: ${err instanceof Error ? err.message : String(err)}`);
   }
+  if (claimedClientId !== undefined && claimedClientId !== clientId) {
+    throw new OAuthError("invalid_client", `client_id ${claimedClientId} does not match the client assertion`);
+  }
+  return clientId;
 }
 
 function verifiedClientId(gateway: Gateway, clientAssertion: string): string {

@@ -42,7 +42,14 @@ export function createGatewayApp(gateway: Gateway, demo: DemoLog, options: Serve
   app.post("/api/pasta/sign-on", requireJson, zValidator("json", signOnBody, badRequest(demo, "sign-on")), (c) =>
     signOnEndpoint(gateway, c.req.valid("json"), c, demo)
   );
-  app.use("/token", cors({ origin: options.rpOrigin, allowHeaders: ["DPoP", "Content-Type"] }));
+  app.use(
+    "/token",
+    cors({
+      origin: options.rpOrigin,
+      allowHeaders: ["DPoP", "Content-Type", "PAYMENT-SIGNATURE"],
+      exposeHeaders: ["PAYMENT-REQUIRED", "PAYMENT-RESPONSE"],
+    })
+  );
   app.post("/token", zValidator("form", tokenForm, oauthRefusal(demo, "token", tokenFormError)), (c) =>
     tokenEndpoint(gateway, c.req.valid("form"), c, demo)
   );

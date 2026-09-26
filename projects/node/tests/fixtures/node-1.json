@@ -1,8 +1,12 @@
 {
-  "version": 2,
+  "version": 3,
   "nodeId": 1,
   "threshold": 2,
   "total": 3,
-  "groupPublicKey": "45cfd2da11c1e34cb65bc16e83920f42d5eeb64b4c8800a9bf20e1a3102a87f4",
-  "secretKeyShare": "06c5e2e52699b3ccd9cf86f9eaa2ab2f2ab04ffb6492f398ef6c455ec482eba2"
+  "groupPublicKey": "1e40be91fbb0846032b41b29104811bace6fa05249dbf00b5d86d0f8a5b85c26",
+  "secretKeyShare": "0289aafa69e65136378ebc9f1dae55611809fd40be02350532fda0f9c9135246",
+  "wallet": {
+    "address": "0x94638F2cA9694DF8dA0a6A3e08433Bc1Fe13f38c",
+    "privateKey": "0x06a1cadcee5d01fc955007d1e409ca4e472a2c9caa9b1d1affc09ea107807088"
+  }
 }

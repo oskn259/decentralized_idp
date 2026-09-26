@@ -1,6 +1,6 @@
 # distKey
 
-ノード群を起動する前に一度だけ実行する、信頼されたディーラー。グループの Ed25519 署名鍵を t-of-n で Shamir 分割してノード i に `s_i` を渡す。デモ用に、RP のクライアント認証鍵（Ed25519）も作り、公開鍵を gateway に、秘密鍵を rp に渡す。本番ではこの部分は RP 登録の手続きに相当する。
+ノード群を起動する前に一度だけ実行する、信頼されたディーラー。グループの Ed25519 署名鍵を t-of-n で Shamir 分割してノード i に `s_i` を渡す。デモ用に、認証と支払いに要る身元も作る: RP と gateway の Ed25519 鍵対（`private_key_jwt` 用）と、RP・gateway・各ノードの EVM ウォレット（x402 用）。ウォレットは空で作られるので、使う前に入金する。本番ではこの部分は RP 登録と各運営者の準備に相当する。
 
 グループ鍵全体と全シェアを目にするのはこのコマンドだけ。DKG（鍵の分散生成）はスコープ外。
 
@@ -28,7 +28,7 @@ distKey --out <dir> [--threshold 2] [--total 3] [--clients demo_client] [--force
 | `--force` | 既存の鍵ファイルを上書き |
 | `--help` | 使い方を表示 |
 
-`<dir>/group.json`、`<dir>/node-<id>.json`（id は 1..n）、`<dir>/clients.json`、`<dir>/client-<client_id>.json` を書き出す。`group.json` と `clients.json` は gateway が、`node-<id>.json` はノード `<id>` が、`client-<client_id>.json` はその RP が読む。
+`<dir>/group.json`、`<dir>/node-<id>.json`（id は 1..n、ウォレット入り）、`<dir>/clients.json`（RP の公開鍵）、`<dir>/client-<client_id>.json`（RP の秘密鍵とウォレット）、`<dir>/gateway.json`（gateway の秘密鍵とウォレット）、`<dir>/gateways.json`（gateway の公開鍵）を書き出す。`group.json`・`clients.json`・`gateway.json` は gateway が、`node-<id>.json`・`gateways.json` はノードが、`client-<client_id>.json` はその RP が読む。終わりに入金すべきアドレスを表示する。
 
 `<dir>` に全ファイルがすでにある場合、何も書き込まず終了コード 0 で終わる（compose での再起動のたびに鍵がローテーションされないようにするため）。一部だけある場合は `--force` を付けない限り終了コード 1 で失敗する。
 

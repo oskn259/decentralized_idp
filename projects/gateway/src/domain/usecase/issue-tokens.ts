@@ -4,7 +4,6 @@ import { Jwt, assembleJwt, createSigningInput, decodeJwt } from "@decentralized-
 import { Grant } from "@decentralized-idp/sdk/node-api";
 import { CredentialClaims, accessTokenJwt, credentialClaimsOf, refreshTokenJwt } from "@decentralized-idp/sdk/tokens";
 import { tokenEndpointUrl } from "../value/group.js";
-import { authenticateClient } from "./client-auth.js";
 import { Gateway, openRounds, participantNodes } from "./gateway.js";
 import { OAuthError } from "./oauth-error.js";
 
@@ -19,10 +18,8 @@ export interface TokenRequest {
   credential: string;
   /** RFC 9449 proof for `POST <issuer>/token`. */
   dpopProof: string;
-  /** RFC 7523 `private_key_jwt` assertion authenticating the client. */
-  clientAssertion: string;
-  /** The form's `client_id`, when the client sent one. */
-  clientId?: string | undefined;
+  /** The client, already authenticated (`authenticateClient`). */
+  clientId: string;
 }
 
 export interface IssuedTokens {
@@ -39,7 +36,7 @@ export interface IssuedTokens {
 /**
  * Turns a credential plus a DPoP proof into an access token and the next refresh token.
  *
- * The client must authenticate, and the credential must have been issued to it. The
+ * The credential must have been issued to the authenticated client. The
  * gateway reads the credential without verifying it (the nodes do that, each for
  * itself) and checks only that the proof's key is the one the credential is bound to. It
  * then pins the moment of issue, runs two FROST rounds, and adds up the plaintext shares
@@ -47,10 +44,7 @@ export interface IssuedTokens {
  */
 export async function issueTokens(gateway: Gateway, request: TokenRequest): Promise<IssuedTokens> {
   const { group } = gateway;
-  const clientId = authenticateClient(gateway, request.clientAssertion);
-  if (request.clientId !== undefined && request.clientId !== clientId) {
-    throw new OAuthError("invalid_client", `client_id ${request.clientId} does not match the client assertion`);
-  }
+  const { clientId } = request;
   const claims = readClaims(request.credential);
   if (claims.client_id !== clientId) {
     throw new OAuthError("invalid_grant", "credential was issued to another client");

@@ -1,15 +1,24 @@
 import { Commitment, FrostCommitment } from "@decentralized-idp/sdk/frost";
+import type { CreditStore, PaymentTerms, Settler } from "@decentralized-idp/sdk/x402";
 import { Clock } from "../infra/clock.js";
 import { Node } from "../infra/node.js";
 import { Client } from "../value/client.js";
 import { Group } from "../value/group.js";
 
-/** Everything a use case needs: the group, the nodes, the registered clients, the time. No user state, ever. */
+/** Everything a use case needs: the group, the nodes, the registered clients, the time, the price of `/token`. No user state, ever. */
 export interface Gateway {
   group: Group;
   nodes: Node[];
   clients: Client[];
   clock: Clock;
+  billing: Billing;
+}
+
+/** How `/token` is paid for: x402 prepaid credit per client (`@decentralized-idp/sdk/x402`). */
+export interface Billing {
+  terms: PaymentTerms;
+  credits: CreditStore;
+  settler: Settler;
 }
 
 /** FROST round 1 as the gateway sees it: who committed, to which rounds, and who did not. */

@@ -36,6 +36,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NODE_CONFIG=/secrets/node.json
 ENV USERS_FILE=/data/users.json
+ENV GATEWAYS_CONFIG=/secrets/gateways.json
+ENV CREDITS_FILE=/data/credits.json
 ENV PORT=4000
 # PUBLIC_URL differs per node, so compose sets it; main.ts defaults to http://localhost:<PORT>.
 # `docker compose logs` is not a TTY, so the demo trace asks for colour explicitly.
@@ -49,7 +51,7 @@ COPY --from=build /app/projects/node/package.json projects/node/
 COPY --from=build /app/projects/node/dist projects/node/dist
 
 # The node only reads its config; mount the secrets directory read-only. Registered users
-# are written to /data, a volume so they survive the container.
+# and the gateways' credit are written to /data, a volume so they survive the container.
 RUN mkdir /data && chown node:node /data
 VOLUME /data
 USER node
