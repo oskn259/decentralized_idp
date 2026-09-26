@@ -65,9 +65,10 @@ npm run sign-on -- --gateway http://localhost:3000 --user alice --password <pw> 
 ## 開発
 
 ```bash
-npm test
 npm run typecheck
-npm run qa-gate    # typecheck + build + カバレッジ付きテスト
+npm run qa-gate    # typecheck + build
 ```
+
+テストは持たない。ログイン画面は本物のブラウザから、`cli.ts` は子プロセスとして、どちらも compose のコンテナ群に対して [`../e2e`](../e2e) が通す。
 
 このページは `projects/gateway/Dockerfile` によってビルドされ、ゲートウェイのイメージに組み込まれる。

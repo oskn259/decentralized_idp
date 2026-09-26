@@ -13,5 +13,5 @@
     "types": ["node", "vitest/importMeta"],
     "noEmit": true
   },
-  "include": ["src", "cli.ts", "tests", "vite.config.ts"]
+  "include": ["src", "cli.ts", "vite.config.ts"]
 }

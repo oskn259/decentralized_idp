@@ -14,6 +14,15 @@
 
 DPoP 鍵の不一致やアサーションの改竄は画面からは作れないので、ここでは扱わない。
 
+`tests/cli.test.ts` は同じコンテナ群に対して、ブラウザ役の CLI（`../idpFront/cli.ts`）を子プロセスとして走らせる。標準出力に JWT が 1 行、標準エラーにトレース、という契約を見る。JWT は gateway の `/jwks.json` に対して node:crypto で検証する。
+
+| ケース | 見るもの |
+|---|---|
+| alice、`--refresh` | 標準出力はアクセストークン 1 行、標準エラーにパスワードが出ない |
+| 誤ったパスワード | 終了コード 1 |
+| `--jkt` | ログイン画面の役だけを演じ、その鍵に束縛されたアサーションを出して止まる |
+| `--password` なし | 終了コード 1 |
+
 ## 使い方
 
 Docker が動いていること。テストが `docker compose up --build --wait` を自分で実行し（初回はビルドに数分）、終わりに止めたノードを戻す。スタックは上げたままにする。
@@ -28,4 +37,4 @@ npm run qa-gate
 `GW` と `RP` で URL を変えられる（compose の issuer は `http://localhost:3000` なので、通常は変えない）。
 
 - `tests/helpers/compose.ts`: `docker compose` の up・stop・復旧
-- `tests/browser.test.ts`: 上の表
+- `tests/browser.test.ts`、`tests/cli.test.ts`: 上の表

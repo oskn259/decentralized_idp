@@ -21,9 +21,17 @@ function compose(...args: string[]): string {
   return run.stdout;
 }
 
-/** Builds and starts everything, returning once every service reports healthy. */
+/**
+ * Builds and starts everything, returning once every service reports healthy. The build
+ * occasionally loses its connection to the daemon mid-way; the second try resumes from
+ * the cached layers.
+ */
 export function up(): void {
-  compose("up", "--build", "--wait");
+  try {
+    compose("up", "--build", "--wait");
+  } catch {
+    compose("up", "--build", "--wait");
+  }
 }
 
 /** Takes one node down. The gateway sees it as unreachable on its next request. */

@@ -43,10 +43,11 @@ RP（relying party）。**普通のOAuthクライアントライブラリだけ*
 ## 開発
 
 ```bash
-npm test          # vitest
 npm run typecheck
-npm run qa-gate    # typecheck + build + カバレッジ付きテスト
+npm run qa-gate    # typecheck + build
 ```
+
+テストは持たない。rp は普通の OAuth クライアントのサンプルであり、その振る舞いはブラウザから通す [`../e2e`](../e2e) で見る。
 
 ```bash
 # リポジトリルートで
